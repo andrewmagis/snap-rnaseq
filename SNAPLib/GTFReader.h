@@ -20,9 +20,9 @@ const int FIRST_NOT_ALIGNED         = 0;
 const int SECOND_NOT_ALIGNED        = 1;
 const int NOT_REVERSE_COMPLIMENTED  = 2;
 const int ALIGNED_SAME_GENE         = 3;
-const int ALIGNED_DIFF_GENE         = 4;
-const int ALIGNED_SAME_CHR          = 5;
-const int ALIGNED_DIFF_CHR          = 6;
+const int ALIGNED_SAME_CHR          = 4;
+const int ALIGNED_DIFF_CHR          = 5;
+const int UNANNOTATED               = 6;
 const int CIRCULAR                  = 7;
 
 class GTFReader;
@@ -52,11 +52,10 @@ class ReadInterval {
         std::string GeneNameSpliced(unsigned intersection) const;
         unsigned Intersection(const ReadInterval *rhs, set<string> &difference) const;
         unsigned Difference(const ReadInterval *rhs, set<string> &difference) const;
-        void Print() const;
-        void PrintIDs() const;
-        void PrintWithMate();
-        
+       
         void WriteGTF(ofstream &outfile, unsigned intersection) const;
+        void Write(ofstream &outfile, unsigned intersection) const;
+        void Print() const;
         void GetGeneInfo(GTFReader *gtf);
     
     protected:
@@ -92,8 +91,6 @@ class ReadIntervalPair {
         
         void Write(ofstream &outfile) const;
         void WriteGTF(ofstream &outfile) const;
-        void Print() const;
-        void PrintIDs() const;
 
     protected:
         
@@ -116,12 +113,11 @@ class ReadIntervalMap {
         
         void AddInterval(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id, bool is_spliced);
         void Consolidate(GTFReader *gtf, unsigned buffer);
-        void Intersect(const ReadIntervalMap &map);
-        void Print() const;
-        void PrintSplicedMatePairs();
+        void Intersect(const ReadIntervalMap &map, unsigned buffer);
         
         void WriteSplicedMatePairs(ofstream &logfile, ofstream &readfile);
         void WriteGTF(ofstream &outfile);
+        void Clear();
         
     protected:
 
@@ -155,7 +151,6 @@ class GTFFeature {
         bool GetAttribute(string key, string &value) const;
         void Print() const;
         
-        
     protected:
     
         string chr;
@@ -170,6 +165,8 @@ class GTFFeature {
         string transcript_id;
         string gene_name;
         std::map<std::string, std::string> attributes;
+        
+        unsigned count;
 
 };
 
@@ -236,9 +233,10 @@ class GTFGene {
         string gene_name;
         unsigned start;
         unsigned end;
-                
+                          
 };        
 
+typedef std::vector<GTFFeature> feature_map;
 typedef std::map<std::string, GTFTranscript> transcript_map;
 typedef std::map<std::string, GTFGene> gene_map;
 
@@ -255,17 +253,24 @@ class GTFReader {
         unsigned Size() const { return transcripts.size(); };
         void IntervalGenes(std::string chr, unsigned start, unsigned stop, std::vector<GTFGene> &results);
         
+        //Function for incrementing read counts for each gene and transcript
+        void IncrementReadCount(string transcript_id0, unsigned start0, unsigned end0, string transcript_id1, unsigned start1, unsigned end1);
+        
         //Functions for building the transcriptome file
         void BuildTranscriptome(const Genome *genome);
         
-        void TransGenePair(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id);
-        void CisChromosomalPair(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id);
-        void TransChromosomalPair(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id);
- 
-        void TransGeneSplice(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id);
-        void CisChromosomalSplice(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id);
-        void TransChromosomalSplice(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id);
-               
+        void IntrageneUnannotatedPair(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id);
+        void IntrageneUnannotatedSplice(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id);
+        
+        void IntrageneCircularPair(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id);
+        void IntrageneCircularSplice(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id);
+        
+        void IntrachromosomalPair(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id);
+        void IntrachromosomalSplice(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id);
+        
+        void InterchromosomalPair(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id);
+        void InterchromosomalSplice(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id);
+
         void PrintGeneAssociations();
                
         void Test();
@@ -276,19 +281,35 @@ class GTFReader {
         unsigned ConsolidateReadIntervals(unsigned buffer);
         
         string filename;
+        feature_map features;
         transcript_map transcripts;
         gene_map genes;
-        std::vector<Interval<GTFGene> > intervals;
-        IntervalTree<GTFGene> tree;
         
-        //Objects for read intervals
-        ReadIntervalMap trans_gene_pairs;
-        ReadIntervalMap cis_chromosomal_pairs;
-        ReadIntervalMap trans_chromosomal_pairs;
-        ReadIntervalMap trans_gene_splices;
-        ReadIntervalMap cis_chromosomal_splices;
-        ReadIntervalMap trans_chromosomal_splices;
-
+        //Interval trees
+        std::vector<Interval<GTFGene*> > gene_intervals;
+        IntervalTree<GTFGene*> gene_tree;
+                
+        std::vector<Interval<GTFTranscript*> > transcript_intervals;
+        IntervalTree<GTFTranscript*> transcript_tree;
+        
+        
+        
+        //Reads that map within a single gene (but unannotated)
+        ReadIntervalMap intragene_unannotated_pairs;
+        ReadIntervalMap intragene_unannotated_splices;
+        
+        //Reads that map within a single gene (circularized)
+        ReadIntervalMap intragene_circular_pairs;
+        ReadIntervalMap intragene_circular_splices;        
+        
+        //Intrachromosomal reads
+        ReadIntervalMap intrachromosomal_pairs;
+        ReadIntervalMap intrachromosomal_splices;  
+        
+        //Intrachromosomal reads
+        ReadIntervalMap interchromosomal_pairs;
+        ReadIntervalMap interchromosomal_splices;           
+        
 };
 
 inline std::string ToString(const unsigned& arg)

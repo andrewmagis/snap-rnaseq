@@ -34,8 +34,8 @@ void Alignment::Print() {
     printf("%u\t%d\t%d\t%s\t%u\t%s\t%d\n", location, isRC, score, rname.c_str(), pos, hashkey.c_str(), isTranscriptome);
 }
 
-AlignmentPair::AlignmentPair(Alignment *align1_, Alignment *align2_, char flag_, bool is_backspliced_=false) 
-    : align1(align1_), align2(align2_), flag(flag_), distance(0), is_backspliced(is_backspliced_)
+AlignmentPair::AlignmentPair(Alignment *align1_, Alignment *align2_, char flag_, bool is_unannotated_, bool is_backspliced_) 
+    : align1(align1_), align2(align2_), flag(flag_), distance(0), is_unannotated(is_unannotated_), is_backspliced(is_backspliced_)
 {
 
     //Calculate the score
@@ -51,7 +51,7 @@ AlignmentPair::AlignmentPair(Alignment *align1_, Alignment *align2_, char flag_,
 }    
     
 AlignmentPair::AlignmentPair(const AlignmentPair &rhs) 
-    : align1(rhs.align1), align2(rhs.align2), flag(rhs.flag), distance(rhs.distance), score(rhs.score), is_backspliced(rhs.is_backspliced)
+    : align1(rhs.align1), align2(rhs.align2), flag(rhs.flag), distance(rhs.distance), score(rhs.score), is_unannotated(rhs.is_unannotated), is_backspliced(rhs.is_backspliced)
 {}
 
 AlignmentPair& AlignmentPair::operator=(const AlignmentPair &rhs) {
@@ -61,6 +61,7 @@ AlignmentPair& AlignmentPair::operator=(const AlignmentPair &rhs) {
         flag = rhs.flag;
         distance = rhs.distance;
         score = rhs.score;
+        is_unannotated = rhs.is_unannotated;
         is_backspliced = rhs.is_backspliced;
     }
     return *this;
@@ -184,10 +185,9 @@ int AlignmentFilter::AddAlignment(unsigned location, bool isRC, int score, bool 
 int AlignmentFilter::Filter(PairedAlignmentResult* result) {
 
     std::vector<AlignmentPair> no_rc;
-    std::vector<AlignmentPair> same_gene_pairs;
-    std::vector<AlignmentPair> diff_gene_pairs;
-    std::vector<AlignmentPair> same_chr_pairs;
-    std::vector<AlignmentPair> diff_chr_pairs;
+    std::vector<AlignmentPair> intragene_pairs;
+    std::vector<AlignmentPair> intrachromosomal_pairs;
+    std::vector<AlignmentPair> interchromosomal_pairs;
     
     /*
     printf("Align1\n");
@@ -235,14 +235,29 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
             if (current_score > maxDist) {
                 continue;
             }
-                    
+            
+            //Calculate distances between these two alignments
+            int distance = 0;
+            if ((m0->second.isRC) && (!m1->second.isRC)) {
+                distance = m0->second.pos - m1->second.pos;
+            } else if ((!m0->second.isRC) && (m1->second.isRC)) {
+                distance = m1->second.pos - m0->second.pos;
+            }
+            
+            //Check to see if this pair is 'circularized'
+            bool is_backspliced = false;
+            if (distance < -100) {
+                is_backspliced = true;
+            }
+                  
+            //Set the initial flag  
             flag = 0;
              
             //Ensure one alignment is reverse complemented
             if (((m0->second.isRC) && (m1->second.isRC)) ||
                 ((!m0->second.isRC) && (!m1->second.isRC))) {
                 flag |= 1 << NOT_REVERSE_COMPLIMENTED;
-                no_rc.push_back(AlignmentPair(&m1->second, &m0->second, flag));
+                no_rc.push_back(AlignmentPair(&m1->second, &m0->second, flag, false, is_backspliced));
                 continue;
                            
             //If both reads are aligned to the transcriptome
@@ -251,26 +266,25 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
                 //If they are on different chromosomes
                 if (m0->second.rname.compare(m1->second.rname) != 0) {
                     flag |= 1 << ALIGNED_DIFF_CHR;
-                    diff_chr_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag));
+                    interchromosomal_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag, false, is_backspliced));
                     continue;              
                     
                 //If they are on the same chromosome and within within the gene boundary
                 } else if (gtf->GetGene(m0->second.gene_id).CheckBoundary(m1->second.rname, m1->second.pos)) {
                     flag |= 1 << ALIGNED_SAME_GENE; 
-                    same_gene_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag));  
+                    intragene_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag, false, is_backspliced));  
                     continue;
                     
                 //If they are on the same chromosome, not within the same gene, but within the gene boundary
                 } else if (gtf->GetGene(m1->second.gene_id).CheckBoundary(m0->second.rname, m0->second.pos)) {
                     flag |= 1 << ALIGNED_SAME_GENE; 
-                    same_gene_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag));  
+                    intragene_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag, false, is_backspliced));  
                     continue;
                     
                 //If they are on the same chromosome, not within the same gene, and not within the gene boundary, 
-                //the must be aligned to different genes, since they are both to the transcriptome
                 } else {
-                    flag |= 1 << ALIGNED_DIFF_GENE;
-                    diff_gene_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag));
+                    flag |= 1 << ALIGNED_SAME_CHR;
+                    intrachromosomal_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag, false, is_backspliced));
                     continue;
                 }    
             
@@ -281,21 +295,21 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
                 if (m0->second.rname.compare(m1->second.rname) != 0) {
  
                     flag |= 1 << ALIGNED_DIFF_CHR;
-                    diff_chr_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag));
+                    interchromosomal_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag, true, is_backspliced));
                     continue;               
 
                 //If they are on the same chromosome and within the gene boundary
                 } else if (gtf->GetGene(m0->second.gene_id).CheckBoundary(m1->second.rname, m1->second.pos)) {
                 
                     flag |= 1 << ALIGNED_SAME_GENE; 
-                    same_gene_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag));  
+                    intragene_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag, true, is_backspliced));  
                     continue;
                 
                 //If they are on the same chromosome but not within the gene boundary
                 } else {
                 
                     flag |= 1 << ALIGNED_SAME_CHR; 
-                    same_chr_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag));
+                    intrachromosomal_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag, true, is_backspliced));
                     continue;                
                 
                 }
@@ -307,21 +321,21 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
                 if (m0->second.rname.compare(m1->second.rname) != 0) {
  
                     flag |= 1 << ALIGNED_DIFF_CHR;
-                    diff_chr_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag));
+                    interchromosomal_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag, true, is_backspliced));
                     continue;     
 
                 //If they are on the same chromosome and within the gene boundary
                 } else if (gtf->GetGene(m1->second.gene_id).CheckBoundary(m0->second.rname, m0->second.pos)) {
                 
                     flag |= 1 << ALIGNED_SAME_GENE; 
-                    same_gene_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag));
+                    intragene_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag, true, is_backspliced));
                     continue;
                     
                 //If they are on the same chromosome but not within the gene boundary
                 } else {
   
                     flag |= 1 << ALIGNED_SAME_CHR; 
-                    same_chr_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag));
+                    intrachromosomal_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag, true, is_backspliced));
                     continue;                   
                 
                 }
@@ -333,7 +347,7 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
                 if (m0->second.rname.compare(m1->second.rname) != 0) {
  
                     flag |= 1 << ALIGNED_DIFF_CHR;
-                    diff_chr_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag));
+                    interchromosomal_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag, true, is_backspliced));
                     continue;    
             
                 } else {
@@ -347,7 +361,7 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
                     for (std::vector<GTFGene>::iterator it = results.begin(); it != results.end(); ++it) {
                         if (gtf->GetGene(it->GeneID()).CheckBoundary(m1->second.rname, m1->second.pos)) {
                             flag |= 1 << ALIGNED_SAME_GENE;
-                            same_gene_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag)); 
+                            intragene_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag, true, is_backspliced)); 
                             found = true; 
                             break;
                         }
@@ -358,7 +372,7 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
                     } else {
   
                         flag |= 1 << ALIGNED_SAME_CHR;
-                        same_chr_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag));
+                        intrachromosomal_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag, true, is_backspliced));
                         continue;    
                     }        
                 }         
@@ -372,72 +386,67 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
         it->Print();
     }
     
-    printf("Same Gene Pairs: %u\n", same_gene_pairs.size());
-    for (vector<AlignmentPair>::iterator it = same_gene_pairs.begin(); it != same_gene_pairs.end(); ++it) {
+    printf("Same Gene Pairs: %u\n", intragene_pairs.size());
+    for (vector<AlignmentPair>::iterator it = intragene_pairs.begin(); it != intragene_pairs.end(); ++it) {
         it->Print();
     }
 
-    printf("Diff Gene Pairs\n");
-    for (vector<AlignmentPair>::iterator it = diff_gene_pairs.begin(); it != diff_gene_pairs.end(); ++it) {
-        it->Print();
-    }
-   
     printf("Same Chr Pairs\n");
-    for (vector<AlignmentPair>::iterator it = same_chr_pairs.begin(); it != same_chr_pairs.end(); ++it) {
+    for (vector<AlignmentPair>::iterator it = intrachromosomal_pairs.begin(); it != intrachromosomal_pairs.end(); ++it) {
         it->Print();
     }
     
     printf("Diff Chr Pairs\n");
-    for (vector<AlignmentPair>::iterator it = diff_chr_pairs.begin(); it != diff_chr_pairs.end(); ++it) {
+    for (vector<AlignmentPair>::iterator it = interchromosomal_pairs.begin(); it != interchromosomal_pairs.end(); ++it) {
         it->Print();
     }
     */
     
 
     //Gene pairs always get priority.  If there is a paired end alignment
-    if (same_gene_pairs.size() > 0) {
+    if (intragene_pairs.size() > 0) {
     
         //Determine if these alignments are unique or not.
-        ProcessPairs(result, same_gene_pairs);
+        ProcessPairs(result, intragene_pairs);
         
         //Here we check for negative reads which indicate circular RNAs
         if (result->status[0] == CertainHit) {
-            //CircularizedPair(result, same_gene_pairs[0]);
+        
+            /*
+            //This is not working very well
+            //Here we check for circularized pairs, as well as pairs that map to unannotated regions
+            if (intragene_pairs[0].is_unannotated) {
+                result->flag[0] |= 1 << UNANNOTATED;
+                result->flag[1] |= 1 << UNANNOTATED;
+                gtf->IntrageneUnannotatedPair(intragene_pairs[0].align1->rname, intragene_pairs[0].align1->pos, intragene_pairs[0].align1->pos_end,
+                                              intragene_pairs[0].align2->rname, intragene_pairs[0].align2->pos, intragene_pairs[0].align2->pos_end, 
+                                              string(read0->getId(), read0->getIdLength()));              
+            }
+            
+            if (intragene_pairs[0].is_backspliced) {
+            
+                result->flag[0] |= 1 << CIRCULAR;
+                result->flag[1] |= 1 << CIRCULAR;
+                gtf->IntrageneCircularPair(intragene_pairs[0].align1->rname, intragene_pairs[0].align1->pos, intragene_pairs[0].align1->pos_end,
+                                           intragene_pairs[0].align2->rname, intragene_pairs[0].align2->pos, intragene_pairs[0].align2->pos_end, 
+                                           string(read0->getId(), read0->getIdLength()));                 
+            
+            }
+            */
+    
+            //Add as count to GTF as well
+            //gtf->IncrementReadCount(intragene_pairs[0].align1->transcript_id, intragene_pairs[0].align1->pos_original, intragene_pairs[0].align1->pos_original+read1->getDataLength(),
+            //                        intragene_pairs[0].align2->transcript_id, intragene_pairs[0].align2->pos_original, intragene_pairs[0].align2->pos_original+read0->getDataLength());
+
         }
         
         return 1;
     }
-    
-    //Diff genes get next priority
-    if (diff_gene_pairs.size() > 0) {
-    
-        ProcessPairs(result, diff_gene_pairs);
         
-        //If this is a good hit, check to make sure there is no RC hit that is better
-        if (result->status[0] == CertainHit) {
-            CheckNoRC(result, no_rc);
-        }
-       
-        //If this is still a good hit, check to make sure there is no partial hit that is better
-        if (result->status[0] == CertainHit) { 
-            FindPartialMatches(result, diff_gene_pairs[0]);
-        }
-        
-        //If this is still a good hit, add this in as a chr link
-        if (result->status[0] == CertainHit) {
-            //Link these positions in the GTF object
-            gtf->TransGenePair(diff_gene_pairs[0].align1->rname, diff_gene_pairs[0].align1->pos, diff_gene_pairs[0].align1->pos_end,
-                               diff_gene_pairs[0].align2->rname, diff_gene_pairs[0].align2->pos, diff_gene_pairs[0].align2->pos_end, 
-                               string(read0->getId(), read0->getIdLength()));        
-        }
-               
-        return 1;
-    }    
-    
     //Pairs on the same chromosome get next priority
-    if (same_chr_pairs.size() > 0) {
+    if (intrachromosomal_pairs.size() > 0) {
       
-        ProcessPairs(result, same_chr_pairs);
+        ProcessPairs(result, intrachromosomal_pairs);
     
         //If this is a good hit, check to make sure there is no RC hit that is better
         if (result->status[0] == CertainHit) {
@@ -445,30 +454,30 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
         }
         
         //If this pair is within some reasonable distance, then allow it
-        if (same_chr_pairs[0].distance <= maxSpacing) {
+        if (intrachromosomal_pairs[0].distance <= maxSpacing) {
             return 1;
         }
        
         //If this is still a good hit, check to make sure there is no partial hit that is better
         if (result->status[0] == CertainHit) { 
-            FindPartialMatches(result, same_chr_pairs[0]);
+            FindPartialMatches(result, intrachromosomal_pairs[0]);
         }
         
         //If this is still a good hit, add this in as a chr link
         if (result->status[0] == CertainHit) {
             //Link these positions in the GTF object
-            gtf->CisChromosomalPair(same_chr_pairs[0].align1->rname, same_chr_pairs[0].align1->pos, same_chr_pairs[0].align1->pos_end,
-                                    same_chr_pairs[0].align2->rname, same_chr_pairs[0].align2->pos, same_chr_pairs[0].align2->pos_end, 
-                                    string(read0->getId(), read0->getIdLength()));      
+            gtf->IntrachromosomalPair(intrachromosomal_pairs[0].align1->rname, intrachromosomal_pairs[0].align1->pos, intrachromosomal_pairs[0].align1->pos_end,
+                                      intrachromosomal_pairs[0].align2->rname, intrachromosomal_pairs[0].align2->pos, intrachromosomal_pairs[0].align2->pos_end, 
+                                      string(read0->getId(), read0->getIdLength()));      
         }
         
         return 1;
     }    
 
     //Next comes different chromosome pairs
-    if (diff_chr_pairs.size() > 0) {
+    if (interchromosomal_pairs.size() > 0) {
     
-        ProcessPairs(result, diff_chr_pairs);
+        ProcessPairs(result, interchromosomal_pairs);
         
         //If this is a good hit, check to make sure there is no RC hit that is better
         if (result->status[0] == CertainHit) {
@@ -477,14 +486,14 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
        
         //If this is still a good hit, check to make sure there is no partial hit that is better
         if (result->status[0] == CertainHit) { 
-            FindPartialMatches(result, diff_chr_pairs[0]);
+            FindPartialMatches(result, interchromosomal_pairs[0]);
         }
         
         //If this is still a good hit, add this in as a gene link
         if (result->status[0] == CertainHit) {
             //Link these positions in the GTF object
-            gtf->TransChromosomalPair(diff_chr_pairs[0].align1->rname, diff_chr_pairs[0].align1->pos, diff_chr_pairs[0].align1->pos_end,
-                                      diff_chr_pairs[0].align2->rname, diff_chr_pairs[0].align2->pos, diff_chr_pairs[0].align2->pos_end, 
+            gtf->InterchromosomalPair(interchromosomal_pairs[0].align1->rname, interchromosomal_pairs[0].align1->pos, interchromosomal_pairs[0].align1->pos_end,
+                                      interchromosomal_pairs[0].align2->rname, interchromosomal_pairs[0].align2->pos, interchromosomal_pairs[0].align2->pos_end, 
                                       string(read0->getId(), read0->getIdLength()));
         }
         
@@ -514,12 +523,11 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
 void AlignmentFilter::UnalignedRead(Read *read) {
 
     seed_map map, mapRC;
-                    
+    
     //Vectors to store potential splices
-    std::vector<AlignmentPair> cis_gene_splices;
-    std::vector<AlignmentPair> trans_gene_splices;
-    std::vector<AlignmentPair> cis_chromosomal_splices;
-    std::vector<AlignmentPair> trans_chromosomal_splices;
+    std::vector<AlignmentPair> intragene_unannotated_splices;
+    std::vector<AlignmentPair> intrachromosomal_splices;
+    std::vector<AlignmentPair> interchromosomal_splices;
     
     //Get the seeds associated with each alignment
     specialAligner->setReadId(0); 
@@ -530,6 +538,7 @@ void AlignmentFilter::UnalignedRead(Read *read) {
     //PrintMaps(map, mapRC);
 
     //MAKE THIS A USER-DEFINED SETTING 
+    //TODO: NEED TO FIX THIS TO BE A FRACTION OF THE READ LENGTH
     unsigned min_size = 3;
     
     for (seed_map::iterator it = map.begin(); it != map.end(); ++it) {
@@ -544,6 +553,8 @@ void AlignmentFilter::UnalignedRead(Read *read) {
             if (it == it2) {
                 continue;
             }
+            
+            //Now we check to see if the two 
  
             if (it2->second.size() < min_size) {
                 continue;
@@ -555,25 +566,25 @@ void AlignmentFilter::UnalignedRead(Read *read) {
             int pos0 = it->first - piece0->beginningOffset + 1; 
             
             //Calculate the consecutive region of the genome that contains this segment
-            unsigned start0 = pos0;
-            unsigned end0 = start0 + *(it->second).begin() + (*(it->second).rbegin() - *(it->second).begin()) + seedLen - 1;
-            //unsigned end0 = start0 + (*(it->second).rbegin() - *(it->second).begin()) + seedLen - 1;
-            //printf("[%s:%u-%u]\n", chr0.c_str(), start0, end0);
+            unsigned start0 = pos0 + *(it->second).begin();
+            unsigned end0 = start0 + (*(it->second).rbegin() - *(it->second).begin()) + seedLen - 1;
+            //printf("0 [%s:%u-%u]\n", chr0.c_str(), start0, end0);
             
             const Genome::Piece *piece1 = genome->getPieceAtLocation(it2->first);
             string chr1 = piece1->name;
             int pos1 = it2->first - piece1->beginningOffset + 1;     
             
             //Calculate the consecutive region of the genome that contains this segment
-            unsigned start1 = pos1;
-            unsigned end1 = start1 + *(it2->second).begin() + (*(it2->second).rbegin() - *(it2->second).begin()) + seedLen - 1; 
+            unsigned start1 = pos1 + *(it2->second).begin();
+            unsigned end1 = start1 + (*(it2->second).rbegin() - *(it2->second).begin()) + seedLen - 1; 
+            //printf("1 [%s:%u-%u]\n", chr1.c_str(), start1, end1);
             
             //Determine if this read is 'backspliced' or not
             bool is_backspliced = false;
             if ((*(it->second.begin())) > (*(it2->second.rbegin()))) {
                 is_backspliced = true;
             }
-                        
+                                    
             //Create new alignments for each segment
             Alignment *align0 = new Alignment(it->first, false, 0, chr0, start0, end0, start0, "transcript_id", "gene_id", false);
             Alignment *align1 = new Alignment(it2->first, false, 0, chr1, start1, end1, start1, "transcript_id", "gene_id", false);
@@ -581,11 +592,11 @@ void AlignmentFilter::UnalignedRead(Read *read) {
             //If they are on different chromosomes
             if (chr0.compare(chr1) != 0) {
             
-                trans_chromosomal_splices.push_back(AlignmentPair(align0, align1, flag, is_backspliced));
+                interchromosomal_splices.push_back(AlignmentPair(align0, align1, flag, true, is_backspliced));
                 continue;    
         
             } else {
-                    
+            
                 //Query the GTF interval tree for all genes overlapping this position
                 std::vector<GTFGene> results;
                 gtf->IntervalGenes(chr0, start0, end0, results);
@@ -595,7 +606,7 @@ void AlignmentFilter::UnalignedRead(Read *read) {
                 for (std::vector<GTFGene>::iterator it = results.begin(); it != results.end(); ++it) {
                     if (gtf->GetGene(it->GeneID()).CheckBoundary(chr1, start1)) {
 
-                        cis_gene_splices.push_back(AlignmentPair(align0, align1, flag, is_backspliced)); 
+                        intragene_unannotated_splices.push_back(AlignmentPair(align0, align1, flag, true, is_backspliced)); 
                         found = true; 
                         break;
                     }
@@ -606,7 +617,7 @@ void AlignmentFilter::UnalignedRead(Read *read) {
                 } else {
 
                     flag |= 1 << ALIGNED_SAME_CHR;
-                    cis_chromosomal_splices.push_back(AlignmentPair(align0, align1, flag, is_backspliced));
+                    intrachromosomal_splices.push_back(AlignmentPair(align0, align1, flag, true, is_backspliced));
                     continue;    
                 }        
             }         
@@ -636,17 +647,18 @@ void AlignmentFilter::UnalignedRead(Read *read) {
             int pos0 = it->first - piece0->beginningOffset + 1; 
             
             //Calculate the consecutive region of the genome that contains this segment
-            unsigned start0 = pos0;
+            unsigned start0 = pos0 + read->getDataLength() - (*(it->second).rbegin() + seedLen);
             unsigned end0 = start0 + (*(it->second).rbegin() - *(it->second).begin()) + seedLen - 1;
-            //printf("[%s:%u-%u]\n", chr0.c_str(), start0, end0);
+            //printf("RC0 [%s:%u-%u]\n", chr0.c_str(), start0, end0);
             
             const Genome::Piece *piece1 = genome->getPieceAtLocation(it2->first);
             string chr1 = piece1->name;
             int pos1 = it2->first - piece1->beginningOffset + 1;     
             
             //Calculate the consecutive region of the genome that contains this segment
-            unsigned start1 = pos1;
-            unsigned end1 = start1 + *(it2->second).begin() + (*(it2->second).rbegin() - *(it2->second).begin()) + seedLen - 1;   
+            unsigned start1 = pos1 + read->getDataLength() - (*(it2->second).rbegin() + seedLen);
+            unsigned end1 = start1 + (*(it2->second).rbegin() - *(it2->second).begin()) + seedLen - 1;  
+            //printf("RC1 [%s:%u-%u]\n", chr1.c_str(), start1, end1);
             
             //Determine if this read is 'backspliced' or not
             bool is_backspliced = false;
@@ -665,7 +677,7 @@ void AlignmentFilter::UnalignedRead(Read *read) {
             //If they are on different chromosomes
             if (chr0.compare(chr1) != 0) {
             
-                trans_chromosomal_splices.push_back(AlignmentPair(align0, align1, flag, is_backspliced));
+                interchromosomal_splices.push_back(AlignmentPair(align0, align1, flag, true, is_backspliced));
                 continue;    
         
             } else {
@@ -678,8 +690,7 @@ void AlignmentFilter::UnalignedRead(Read *read) {
                 bool found = false;
                 for (std::vector<GTFGene>::iterator it = results.begin(); it != results.end(); ++it) {
                     if (gtf->GetGene(it->GeneID()).CheckBoundary(chr1, start1)) {
-
-                        cis_gene_splices.push_back(AlignmentPair(align0, align1, flag, is_backspliced)); 
+                        intragene_unannotated_splices.push_back(AlignmentPair(align0, align1, flag, true, is_backspliced)); 
                         found = true; 
                         break;
                     }
@@ -690,7 +701,7 @@ void AlignmentFilter::UnalignedRead(Read *read) {
                 } else {
 
                     flag |= 1 << ALIGNED_SAME_CHR;
-                    cis_chromosomal_splices.push_back(AlignmentPair(align0, align1, flag, is_backspliced));
+                    intrachromosomal_splices.push_back(AlignmentPair(align0, align1, flag, true, is_backspliced));
                     continue;    
                 }        
             }         
@@ -698,47 +709,56 @@ void AlignmentFilter::UnalignedRead(Read *read) {
     }
     
     //Now we go through each of the three sets, prioritizing the cis-gene model, as before
-    if (cis_gene_splices.size() > 0) {
+    if (intragene_unannotated_splices.size() > 0) {
         
-        /*
-        if (ProcessSplices(cis_gene_splices)) {
-            gtf->TransGeneSplice(cis_gene_splices[0].align1->rname, cis_gene_splices[0].align1->pos, cis_gene_splices[0].align1->pos_end,
-                                 cis_gene_splices[0].align2->rname, cis_gene_splices[0].align2->pos, cis_gene_splices[0].align2->pos_end, 
-                                 string(read0->getId(), read0->getIdLength()));  
+        //If this set of splices passes the quality filter
+        if (ProcessSplices(intragene_unannotated_splices)) {
+        
+            if (intragene_unannotated_splices[0].is_backspliced) {
+                gtf->IntrageneCircularSplice(intragene_unannotated_splices[0].align1->rname, intragene_unannotated_splices[0].align1->pos, intragene_unannotated_splices[0].align1->pos_end,
+                                             intragene_unannotated_splices[0].align2->rname, intragene_unannotated_splices[0].align2->pos, intragene_unannotated_splices[0].align2->pos_end, 
+                                             string(read0->getId(), read0->getIdLength()));   
+            
+            } else {   
+            
+                gtf->IntrageneUnannotatedSplice(intragene_unannotated_splices[0].align1->rname, intragene_unannotated_splices[0].align1->pos, intragene_unannotated_splices[0].align1->pos_end,
+                                                intragene_unannotated_splices[0].align2->rname, intragene_unannotated_splices[0].align2->pos, intragene_unannotated_splices[0].align2->pos_end, 
+                                                string(read0->getId(), read0->getIdLength()));                              
+            }
         } 
-        */
+
           
-    } else if (cis_chromosomal_splices.size() > 0) {
+    } else if (intrachromosomal_splices.size() > 0) {
         
-        if (ProcessSplices(cis_chromosomal_splices)) {
-            gtf->CisChromosomalSplice(cis_chromosomal_splices[0].align1->rname, cis_chromosomal_splices[0].align1->pos, cis_chromosomal_splices[0].align1->pos_end,
-                                      cis_chromosomal_splices[0].align2->rname, cis_chromosomal_splices[0].align2->pos, cis_chromosomal_splices[0].align2->pos_end, 
-                                      string(read0->getId(), read0->getIdLength()));  
+        if (ProcessSplices(intrachromosomal_splices)) {
+            gtf->IntrachromosomalSplice(intrachromosomal_splices[0].align1->rname, intrachromosomal_splices[0].align1->pos, intrachromosomal_splices[0].align1->pos_end,
+                                        intrachromosomal_splices[0].align2->rname, intrachromosomal_splices[0].align2->pos, intrachromosomal_splices[0].align2->pos_end, 
+                                        string(read0->getId(), read0->getIdLength()));  
         }    
     
 
-    } else if (trans_chromosomal_splices.size() > 0) {
+    } else if (interchromosomal_splices.size() > 0) {
     
-        if (ProcessSplices(trans_chromosomal_splices)) {
-            gtf->TransChromosomalSplice(trans_chromosomal_splices[0].align1->rname, trans_chromosomal_splices[0].align1->pos, trans_chromosomal_splices[0].align1->pos_end,
-                                        trans_chromosomal_splices[0].align2->rname, trans_chromosomal_splices[0].align2->pos, trans_chromosomal_splices[0].align2->pos_end, 
+        if (ProcessSplices(interchromosomal_splices)) {
+            gtf->InterchromosomalSplice(interchromosomal_splices[0].align1->rname, interchromosomal_splices[0].align1->pos, interchromosomal_splices[0].align1->pos_end,
+                                        interchromosomal_splices[0].align2->rname, interchromosomal_splices[0].align2->pos, interchromosomal_splices[0].align2->pos_end, 
                                         string(read0->getId(), read0->getIdLength()));  
         }
     }
     
     //WHY ARE THESE POINTERS ANYWAY?
     
-    for (vector<AlignmentPair>::iterator it = cis_gene_splices.begin(); it != cis_gene_splices.end(); ++it) {
+    for (vector<AlignmentPair>::iterator it = intragene_unannotated_splices.begin(); it != intragene_unannotated_splices.end(); ++it) {
         delete it->align1;
         delete it->align2;
     }
     
-    for (vector<AlignmentPair>::iterator it = cis_chromosomal_splices.begin(); it != cis_chromosomal_splices.end(); ++it) {
+    for (vector<AlignmentPair>::iterator it = intrachromosomal_splices.begin(); it != intrachromosomal_splices.end(); ++it) {
         delete it->align1;
         delete it->align2;
     }
 
-    for (vector<AlignmentPair>::iterator it = trans_chromosomal_splices.begin(); it != trans_chromosomal_splices.end(); ++it) {
+    for (vector<AlignmentPair>::iterator it = interchromosomal_splices.begin(); it != interchromosomal_splices.end(); ++it) {
         delete it->align1;
         delete it->align2;
     }
@@ -766,77 +786,6 @@ bool AlignmentFilter::ProcessSplices(std::vector<AlignmentPair> &pairs) {
             return false;       
         }  
     }   
-}
-
-void AlignmentFilter::ForwardSplicedRead(unsigned genomeLocation0, std::set<unsigned> &seeds0, unsigned genomeLocation1, std::set<unsigned> &seeds1) {
-
-    const Genome::Piece *piece0 = genome->getPieceAtLocation(genomeLocation0);
-    string chr0 = piece0->name;
-    int pos0 = genomeLocation0 - piece0->beginningOffset + 1; 
-
-    const Genome::Piece *piece1 = genome->getPieceAtLocation(genomeLocation1);
-    string chr1 = piece1->name;
-    int pos1 = genomeLocation1 - piece1->beginningOffset + 1; 
-
-    //Calculate the consecutive region of the genome that contains this segment
-    unsigned start0 = pos0;
-    unsigned end0 = start0 + (*seeds0.rbegin() - *seeds0.begin()) + seedLen - 1;
-    //printf("[%s:%u-%u]\n", chr0.c_str(), start0, end0);
-    
-    //Calculate the consecutive region of the genome that contains this segment
-    unsigned start1 = pos1;
-    unsigned end1 = start1 + *seeds1.begin() + (*seeds1.rbegin() - *seeds1.begin()) + seedLen - 1;
-    //printf("[%s:%u-%u]\n", chr1.c_str(), start1, end1);
-    
-    //NEED TO SET THIS UP AS TRANS CIS GENE, ETC
-    //COULD FIND NEW SPLICE JUNCTIONS USING GENE PAIRS TOO!
-    printf("chr0: %s chr1: %s\n", chr0.c_str(), chr1.c_str());
-    if (chr0.compare(chr1) != 0) {
-        gtf->TransChromosomalSplice(chr0, start0, end0, chr1, start1, end1, string(read0->getId(), read0->getIdLength()));
-    }
-
-
-}
-
-void AlignmentFilter::BackSplicedRead(unsigned genomeLocation0, std::set<unsigned> &seeds0, unsigned genomeLocation1, std::set<unsigned> &seeds1) {
-
-    const Genome::Piece *piece0 = genome->getPieceAtLocation(genomeLocation0);
-    string chr0 = piece0->name;
-    int pos0 = genomeLocation0 - piece0->beginningOffset + 1; 
-
-    const Genome::Piece *piece1 = genome->getPieceAtLocation(genomeLocation1);
-    string chr1 = piece1->name;
-    int pos1 = genomeLocation1 - piece1->beginningOffset + 1; 
-
-    //Calculate the consecutive region of the genome that contains this segment
-    unsigned start0 = pos0;
-    unsigned end0 = start0 + (*seeds0.rbegin() - *seeds0.begin()) + seedLen - 1;
-    printf("[%s:%u-%u]\n", chr0.c_str(), start0, end0);
-    
-    //Calculate the consecutive region of the genome that contains this segment
-    unsigned start1 = pos1;
-    unsigned end1 = start1 + *seeds1.begin() + (*seeds1.rbegin() - *seeds1.begin()) + seedLen - 1;
-    printf("[%s:%u-%u]\n", chr1.c_str(), start1, end1);
-
-    //NEED TO SET THIS UP AS TRANS CIS GENE, ETC
-    //COULD FIND NEW SPLICE JUNCTIONS USING GENE PAIRS TOO!
-    if (chr0.compare(chr1) != 0) {
-        gtf->TransChromosomalSplice(chr0, start0, end0, chr1, start1, end1, string(read0->getId(), read0->getIdLength()));
-    }
-}
-
-void AlignmentFilter::CircularizedPair(PairedAlignmentResult* result, AlignmentPair &pair) {
-
-    //If the distance of this pair is negative, then the reads are
-    //reversed in their orientation, which may indicate a circular RNA
-    if (pair.distance < -100) { 
-    
-        result->flag[0] |= 1 << CIRCULAR;
-        result->flag[1] |= 1 << CIRCULAR;
-        printf("AddCircRNA needs to be rewritten\n");
-        //gtf->AddCircRNA(pair.align1->gene_id, false, read0->getId(), read0->getIdLength());
-    } 
-
 }
 
 void AlignmentFilter::FindPartialMatches(PairedAlignmentResult *result, AlignmentPair &pair) {
@@ -1211,4 +1160,77 @@ void AlignmentFilter::BacksplicedRead(Read *read, unsigned genomeLocation0, unsi
     }
 }
 
+*/
+
+/*
+void AlignmentFilter::ForwardSplicedRead(unsigned genomeLocation0, std::set<unsigned> &seeds0, unsigned genomeLocation1, std::set<unsigned> &seeds1) {
+
+    const Genome::Piece *piece0 = genome->getPieceAtLocation(genomeLocation0);
+    string chr0 = piece0->name;
+    int pos0 = genomeLocation0 - piece0->beginningOffset + 1; 
+
+    const Genome::Piece *piece1 = genome->getPieceAtLocation(genomeLocation1);
+    string chr1 = piece1->name;
+    int pos1 = genomeLocation1 - piece1->beginningOffset + 1; 
+
+    //Calculate the consecutive region of the genome that contains this segment
+    unsigned start0 = pos0;
+    unsigned end0 = start0 + (*seeds0.rbegin() - *seeds0.begin()) + seedLen - 1;
+    //printf("[%s:%u-%u]\n", chr0.c_str(), start0, end0);
+    
+    //Calculate the consecutive region of the genome that contains this segment
+    unsigned start1 = pos1;
+    unsigned end1 = start1 + *seeds1.begin() + (*seeds1.rbegin() - *seeds1.begin()) + seedLen - 1;
+    //printf("[%s:%u-%u]\n", chr1.c_str(), start1, end1);
+    
+    //NEED TO SET THIS UP AS TRANS CIS GENE, ETC
+    //COULD FIND NEW SPLICE JUNCTIONS USING GENE PAIRS TOO!
+    printf("chr0: %s chr1: %s\n", chr0.c_str(), chr1.c_str());
+    if (chr0.compare(chr1) != 0) {
+        gtf->TransChromosomalSplice(chr0, start0, end0, chr1, start1, end1, string(read0->getId(), read0->getIdLength()));
+    }
+
+
+}
+
+void AlignmentFilter::BackSplicedRead(unsigned genomeLocation0, std::set<unsigned> &seeds0, unsigned genomeLocation1, std::set<unsigned> &seeds1) {
+
+    const Genome::Piece *piece0 = genome->getPieceAtLocation(genomeLocation0);
+    string chr0 = piece0->name;
+    int pos0 = genomeLocation0 - piece0->beginningOffset + 1; 
+
+    const Genome::Piece *piece1 = genome->getPieceAtLocation(genomeLocation1);
+    string chr1 = piece1->name;
+    int pos1 = genomeLocation1 - piece1->beginningOffset + 1; 
+
+    //Calculate the consecutive region of the genome that contains this segment
+    unsigned start0 = pos0;
+    unsigned end0 = start0 + (*seeds0.rbegin() - *seeds0.begin()) + seedLen - 1;
+    printf("[%s:%u-%u]\n", chr0.c_str(), start0, end0);
+    
+    //Calculate the consecutive region of the genome that contains this segment
+    unsigned start1 = pos1;
+    unsigned end1 = start1 + *seeds1.begin() + (*seeds1.rbegin() - *seeds1.begin()) + seedLen - 1;
+    printf("[%s:%u-%u]\n", chr1.c_str(), start1, end1);
+
+    //NEED TO SET THIS UP AS TRANS CIS GENE, ETC
+    //COULD FIND NEW SPLICE JUNCTIONS USING GENE PAIRS TOO!
+    if (chr0.compare(chr1) != 0) {
+        gtf->TransChromosomalSplice(chr0, start0, end0, chr1, start1, end1, string(read0->getId(), read0->getIdLength()));
+    }
+}
+
+void AlignmentFilter::CircularizedPair(PairedAlignmentResult* result, AlignmentPair &pair) {
+
+    //If the distance of this pair is negative, then the reads are
+    //reversed in their orientation, which may indicate a circular RNA
+    if (pair.distance < -100) { 
+    
+        result->flag[0] |= 1 << CIRCULAR;
+        result->flag[1] |= 1 << CIRCULAR;
+        printf("AddCircRNA needs to be rewritten\n");
+        //gtf->AddCircRNA(pair.align1->gene_id, false, read0->getId(), read0->getIdLength());
+    } 
+
+}
 */

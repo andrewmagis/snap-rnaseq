@@ -51,7 +51,7 @@ class AlignmentPair {
 
     public: 
     
-        AlignmentPair(Alignment *align1_, Alignment *align2_, char flag_, bool is_backspliced_);
+        AlignmentPair(Alignment *align1_, Alignment *align2_, char flag_, bool is_unannotated_, bool is_backspliced_);
         virtual ~AlignmentPair() {}
         AlignmentPair(const AlignmentPair &rhs);
         AlignmentPair& operator=(const AlignmentPair &rhs);
@@ -65,6 +65,7 @@ class AlignmentPair {
         char flag;
         int distance;
         unsigned score;
+        bool is_unannotated;
         bool is_backspliced;
 
 };
@@ -96,15 +97,15 @@ class AlignmentFilter {
         bool ProcessSplices(std::vector<AlignmentPair> &pairs);
         
         //Functions for spliced reads
-        void ForwardSplicedRead(unsigned genomeLocation0, std::set<unsigned> &seeds0, unsigned genomeLocation1, std::set<unsigned> &seeds1);
-        void BackSplicedRead(unsigned genomeLocation0, std::set<unsigned> &seeds0, unsigned genomeLocation1, std::set<unsigned> &seeds1);
+        //void ForwardSplicedRead(unsigned genomeLocation0, std::set<unsigned> &seeds0, unsigned genomeLocation1, std::set<unsigned> &seeds1);
+        //void BackSplicedRead(unsigned genomeLocation0, std::set<unsigned> &seeds0, unsigned genomeLocation1, std::set<unsigned> &seeds1);
         
         //Functions for spliced reads
         //void SplicedRead(unsigned genomeLocation0, unsigned genomeLocation1);
         //void BacksplicedRead(Read* read, unsigned genomeLocation0, unsigned offset0, unsigned length0, unsigned genomeLocation1, unsigned offset1, unsigned length1);
         
         //Functions for circularized pairs and backsplices
-        void CircularizedPair(PairedAlignmentResult* result, AlignmentPair &pair);
+        //void CircularizedPair(PairedAlignmentResult* result, AlignmentPair &pair);
         
         //Temp printing
         void PrintMaps(seed_map &map, seed_map &mapRC);

@@ -54,11 +54,15 @@ AlignerContext::AlignerContext(int i_argc, const char **i_argv, const char *i_ve
 
 AlignerContext::~AlignerContext()
 {
+    
+    //Delete the index
+    delete index;
+    delete transcriptome;
+
     delete extension;
     if (gtf != NULL) {
     
         //REALLY BAD PLACE FOR THIS
-        //gtf->PrintNegativeCounts();
         gtf->PrintGeneAssociations();
         
         delete gtf;

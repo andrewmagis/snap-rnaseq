@@ -591,17 +591,17 @@ SAMWriter::generateSAMText(
     if (flag & (1 << ALIGNED_SAME_GENE)) {
         tags += "\tXA:Z:SameGene";
     }
-    
-    if (flag & (1 << ALIGNED_DIFF_GENE)) {
-        tags += "\tXA:Z:DiffGene";    
-    }
-    
+        
     if (flag & (1 << ALIGNED_SAME_CHR)) {
         tags += "\tXA:Z:SameChr";    
     }    
     
     if (flag & (1 << ALIGNED_DIFF_CHR)) {
         tags += "\tXA:Z:DiffChr";
+    }
+    
+    if (flag & (1 << UNANNOTATED)) {
+        tags += "\tXA:Z:Unannotated";
     }
     
     if (flag & (1 << CIRCULAR)) {

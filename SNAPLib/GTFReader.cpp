@@ -10,7 +10,7 @@
 #include "Compat.h"
 
 bool IntervalNodeSort(const Interval<ReadInterval*> &interval0, const Interval<ReadInterval*> &interval1) { 
-    return interval0.value->Start() <= interval1.value->Start(); 
+    return interval0.value->Start() < interval1.value->Start(); 
 }
 
 bool SplicedMateSort(const interval_pair &pair0, const interval_pair &pair1) {
@@ -127,26 +127,6 @@ std::string ReadInterval::GeneNameSpliced(unsigned intersection) const {
     return gene_name + "," + ToString(intersection);
 }
 
-
-void ReadInterval::Print() const {
-    printf("[%s:%u-%u] (%u reads)\n", chr.c_str(), start, end, ids.size());
-}
-
-void ReadInterval::PrintIDs() const {
-    for (std::set<string>::iterator it = ids.begin(); it != ids.end(); ++it) {
-        printf("%s\n", it->c_str());
-    }
-}
-
-void ReadInterval::PrintWithMate() {
-
-    for (set<ReadInterval*>::iterator it = mate.begin(); it != mate.end(); ++it) {
-        Print();
-        (*it)->Print();
-        printf("\n");
-    }
-}
-
 void ReadInterval::GetGeneInfo(GTFReader *gtf) {
 
     //Get gene info for this interval
@@ -160,6 +140,14 @@ void ReadInterval::GetGeneInfo(GTFReader *gtf) {
         }
     }
 
+}
+
+void ReadInterval::Write(ofstream &outfile, unsigned intersection) const {
+    outfile << chr << ':' << start << '-' << end << '\t' << GeneID() << '\t' << GeneNameSpliced(intersection) << endl;
+}
+
+void ReadInterval::Print() const {
+    cout << chr << ':' << start << '-' << end << '\t' << GeneID() << endl;
 }
 
 void ReadInterval::WriteGTF(ofstream &outfile, unsigned intersection) const {
@@ -193,25 +181,9 @@ bool ReadIntervalPair::operator<(const ReadIntervalPair& rhs) const {
     return intersection.size() > rhs.intersection.size();
 }
 
-void ReadIntervalPair::Print() const {
-    printf("[%s:%u-%u] (%u) <- %u -> (%u) [%s:%u-%u]\n", interval1->chr.c_str(), interval1->start, interval1->end, interval1->ids.size(), intersection.size(),
-                                                         interval2->ids.size(), interval2->chr.c_str(), interval2->start, interval2->end);
-
-}
-
 void ReadIntervalPair::Write(ofstream &outfile) const {
-
-    outfile << interval1->chr << ':' << interval1->start << '-' << interval1->end << ':' << interval1->ids.size() << '\t';
-    outfile << interval2->chr << ':' << interval2->start << '-' << interval2->end << ':' << interval2->ids.size() << '\t';
-    outfile << intersection.size() << '\n';
-
-}
-
-void ReadIntervalPair::PrintIDs() const {
-    Print();
-    for (std::set<string>::iterator it = intersection.begin(); it != intersection.end(); ++it) {
-        printf("%s\n", it->c_str());
-    }
+    interval1->Write(outfile, intersection.size());
+    interval2->Write(outfile, intersection.size());
 }
 
 void ReadIntervalPair::WriteGTF(ofstream &outfile) const {
@@ -230,11 +202,18 @@ ReadIntervalMap::ReadIntervalMap(const ReadIntervalMap &rhs) {
 
 ReadIntervalMap::~ReadIntervalMap() {
     pthread_mutex_destroy(&mutex);
-    printf("Don't forget to clean up read intervals\n");
 
     for (std::vector<Interval<ReadInterval*> >::iterator it = read_intervals.begin(); it != read_intervals.end(); ++it) {
         delete it->value;
     }
+    read_intervals.clear();
+}
+
+void ReadIntervalMap::Clear() {
+    for (std::vector<Interval<ReadInterval*> >::iterator it = read_intervals.begin(); it != read_intervals.end(); ++it) {
+        delete it->value;
+    }
+    read_intervals.clear();
 }
 
 ReadIntervalMap& ReadIntervalMap::operator=(const ReadIntervalMap &rhs) {
@@ -260,15 +239,6 @@ void ReadIntervalMap::AddInterval(string chr0, unsigned start0, unsigned end0, s
     //Unlock it
     pthread_mutex_unlock(&mutex);
     
-}
-
-void ReadIntervalMap::Print() const {
-
-    //Print
-    for (std::vector<ReadIntervalPair>::const_iterator it = pairs.begin(); it != pairs.end(); ++it) {
-        it->Print();
-    }
-
 }
 
 void ReadIntervalMap::Consolidate(GTFReader *gtf, unsigned buffer=100) {
@@ -396,7 +366,7 @@ unsigned ReadIntervalMap::ConsolidateReadIntervals(unsigned buffer) {
     /*
     //Delete all the original intervals that were zeroed out
     for (std::vector<Interval<ReadInterval*> >::iterator it = read_intervals.begin(); it != read_intervals.end(); ++it) {
-        if (it->value->start == 0) {
+        if (it->value->consolidated) {
             delete it->value;
         }
     }
@@ -408,11 +378,11 @@ unsigned ReadIntervalMap::ConsolidateReadIntervals(unsigned buffer) {
 
 }
 
-void ReadIntervalMap::Intersect(const ReadIntervalMap &rhs) {
+void ReadIntervalMap::Intersect(const ReadIntervalMap &rhs, unsigned buffer=100) {
 
     std::vector<Interval<ReadInterval*> > left_intervals;
     std::vector<Interval<ReadInterval*> > right_intervals;
-    
+
     //Build the new interval tree
     for (std::vector<ReadIntervalPair>::iterator it = pairs.begin(); it != pairs.end(); ++it) {
 
@@ -422,13 +392,11 @@ void ReadIntervalMap::Intersect(const ReadIntervalMap &rhs) {
     }
     
     //Sort these intervals by start position
-    sort(left_intervals.begin(), left_intervals.end(), IntervalNodeSort);
+    sort(left_intervals.begin(), left_intervals.end(), IntervalNodeSort);  
     sort(right_intervals.begin(), right_intervals.end(), IntervalNodeSort);
     
     IntervalTree<ReadInterval*> left_tree(left_intervals);
     IntervalTree<ReadInterval*> right_tree(right_intervals);
-    
-    unsigned buffer = 100;
     
     //Loop over all intervals in the other map
     for (std::vector<ReadIntervalPair>::const_iterator it = rhs.pairs.begin(); it != rhs.pairs.end(); ++it) {
@@ -477,24 +445,6 @@ void ReadIntervalMap::Intersect(const ReadIntervalMap &rhs) {
     }
 }
 
-void ReadIntervalMap::PrintSplicedMatePairs() {
-
-    //Sort the pairs
-    sort(spliced_mate_pairs.begin(), spliced_mate_pairs.end(), SplicedMateSort);
-
-    for (spliced_mate::const_iterator it = spliced_mate_pairs.begin(); it != spliced_mate_pairs.end(); ++it) {
-    
-        //Get the current pair
-        ReadIntervalPair mated = it->first;
-        ReadIntervalPair spliced = it->second;
-        
-        mated.PrintIDs();
-        spliced.PrintIDs();
-    
-    }
-
-}
-
 void ReadIntervalMap::WriteGTF(ofstream &outfile) {
 
     //Sort the pairs
@@ -516,19 +466,17 @@ void ReadIntervalMap::WriteSplicedMatePairs(ofstream &logfile, ofstream &readfil
 
     //Write out each one to the output file
     for (spliced_mate::const_iterator it = spliced_mate_pairs.begin(); it != spliced_mate_pairs.end(); ++it) {
-    
-        //Get the current pair
-        ReadIntervalPair mated = it->first;
-        ReadIntervalPair spliced = it->second;
-        
-        mated.Write(logfile);
-        spliced.Write(logfile);
+     
+        it->first.Write(logfile);
+        it->second.Write(logfile);
         logfile << endl;
         
     }
 }
 
-GTFFeature::GTFFeature(string line) {
+GTFFeature::GTFFeature(string line) 
+    : count(0) 
+{
                 
     char* line_c = (char*)line.c_str(); 
     char *pch;
@@ -617,7 +565,7 @@ void GTFFeature::Print() const {
 
 GTFFeature::GTFFeature(const GTFFeature& rhs) 
     :   chr(rhs.chr), source(rhs.source), feature(rhs.feature), start(rhs.start), end(rhs.end), score(rhs.score),
-        strand(rhs.strand), frame(rhs.frame), gene_id(rhs.gene_id), transcript_id(rhs.transcript_id)
+        strand(rhs.strand), frame(rhs.frame), gene_id(rhs.gene_id), transcript_id(rhs.transcript_id), count(rhs.count)
 {}
   
 GTFFeature::~GTFFeature() {}
@@ -635,6 +583,7 @@ GTFFeature& GTFFeature::operator=(const GTFFeature& rhs) {
         frame = rhs.frame;
         gene_id = rhs.gene_id;
         transcript_id = rhs.transcript_id;
+        count = rhs.count;
     }
     return *this;
 }
@@ -878,9 +827,15 @@ int GTFReader::Load(string _filename) {
     
     //Add all genes to interval tree
     for (gene_map::iterator it = genes.begin(); it != genes.end(); ++it) {
-        intervals.push_back(Interval<GTFGene>(it->second.start, it->second.end, it->second));
+        gene_intervals.push_back(Interval<GTFGene*>(it->second.start, it->second.end, &it->second));
     }
-    tree = IntervalTree<GTFGene>(intervals);
+    gene_tree = IntervalTree<GTFGene*>(gene_intervals);
+    
+    //Add all transcripts to interval tree
+    for (transcript_map::iterator it = transcripts.begin(); it != transcripts.end(); ++it) {
+        transcript_intervals.push_back(Interval<GTFTranscript*>(it->second.start, it->second.end, &it->second));
+    }
+    transcript_tree = IntervalTree<GTFTranscript*>(transcript_intervals);    
     
     _int64 loadTime = timeInMillis() - loadStart;
     printf("%llds. %u features, %u transcripts\n", loadTime / 1000, num_lines, transcripts.size());
@@ -900,6 +855,9 @@ int GTFReader::Parse(string line) {
     if (feature.feature.compare("exon") != 0) {
         return 1;
     }
+    
+    //We don't try to find features, we just add them to the vector and to the tree
+    features.push_back(feature);
     
     //Try to find this transcript in the transcript_map
     transcript_map::iterator pos = transcripts.find(feature.transcript_id);
@@ -932,6 +890,8 @@ int GTFReader::Parse(string line) {
         gpos->second.UpdateBoundaries(feature.start, feature.end);
         //gspos->second.features.push_back(feature);
     }    
+    
+    
         
     return 0;
     
@@ -961,91 +921,139 @@ const GTFGene& GTFReader::GetGene(string gene_id) const {
 
 }
 
+void GTFReader::IncrementReadCount(string transcript_id0, unsigned start0, unsigned end0, string transcript_id1, unsigned start1, unsigned end1) {
+
+    //If a read is aligned to transcriptome, it can be spliced
+    //If it is not aligned to transcriptome, it cannot be spliced
+    
+    //If the first read is aligned to transcriptome
+    if (transcript_id0.size() != 0) {
+    
+        //Get the transcript associated with this id
+        const GTFTranscript &transcript0 = GetTranscript(transcript_id0);
+        
+        //Get the junctions for this transcript
+        std::vector<junction> junctions;
+        transcript0.Junctions(start0, end0-start0+1, junctions);
+        
+        //For each junction, query the exon tree
+            
+    
+    }
+
+    //Get the transcript for this gene
+    if (transcript_id1.size() != 0) {
+    
+        const GTFTranscript &transcript1 = GetTranscript(transcript_id1);
+    
+    
+    }
+    
+    
+    
+}
+
 void GTFReader::IntervalGenes(std::string chr, unsigned start, unsigned stop, std::vector<GTFGene> &results) {
     
-    std::vector<Interval<GTFGene> > temp_results;
-    tree.findOverlapping(start, stop, temp_results);
+    std::vector<Interval<GTFGene*> > temp_results;
+    gene_tree.findOverlapping(start, stop, temp_results);
 
     //Filter by chromosome
-    for (std::vector<Interval<GTFGene> >::iterator it = temp_results.begin(); it != temp_results.end(); ++it) {
-        if (it->value.chr.compare(chr) == 0) {
-            results.push_back(it->value);
+    for (std::vector<Interval<GTFGene*> >::iterator it = temp_results.begin(); it != temp_results.end(); ++it) {
+        if (it->value->chr.compare(chr) == 0) {
+            results.push_back(*(it->value));
         }
     }
 }
 
-void GTFReader::TransGenePair(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id) {
-    trans_gene_pairs.AddInterval(chr0, start0, end0, chr1, start1, end1, id, false);
+void GTFReader::IntrageneUnannotatedPair(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id) {
+    intragene_unannotated_pairs.AddInterval(chr0, start0, end0, chr1, start1, end1, id, false);
 }
 
-void GTFReader::CisChromosomalPair(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id) {
-    cis_chromosomal_pairs.AddInterval(chr0, start0, end0, chr1, start1, end1, id, false);
+void GTFReader::IntrageneUnannotatedSplice(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id) {
+    intragene_unannotated_splices.AddInterval(chr0, start0, end0, chr1, start1, end1, id, true);
 }
 
-void GTFReader::TransChromosomalPair(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id) {
-    trans_chromosomal_pairs.AddInterval(chr0, start0, end0, chr1, start1, end1, id, false);
-}
- 
-void GTFReader::TransGeneSplice(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id) {
-    trans_gene_splices.AddInterval(chr0, start0, end0, chr1, start1, end1, id, true);
+void GTFReader::IntrageneCircularPair(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id) {
+    intragene_circular_pairs.AddInterval(chr0, start0, end0, chr1, start1, end1, id, false);
 }
 
-void GTFReader::CisChromosomalSplice(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id) {
-    cis_chromosomal_splices.AddInterval(chr0, start0, end0, chr1, start1, end1, id, true);
+void GTFReader::IntrageneCircularSplice(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id) {
+    intragene_circular_splices.AddInterval(chr0, start0, end0, chr1, start1, end1, id, true);
 }
 
-void GTFReader::TransChromosomalSplice(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id) {
-    trans_chromosomal_splices.AddInterval(chr0, start0, end0, chr1, start1, end1, id, true);
+void GTFReader::IntrachromosomalPair(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id) {
+    intrachromosomal_pairs.AddInterval(chr0, start0, end0, chr1, start1, end1, id, false);
 }
-               
+
+void GTFReader::IntrachromosomalSplice(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id) {
+    intrachromosomal_splices.AddInterval(chr0, start0, end0, chr1, start1, end1, id, true);
+}
+
+void GTFReader::InterchromosomalPair(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id) {
+    interchromosomal_pairs.AddInterval(chr0, start0, end0, chr1, start1, end1, id, false);
+}
+
+void GTFReader::InterchromosomalSplice(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id) {
+    interchromosomal_splices.AddInterval(chr0, start0, end0, chr1, start1, end1, id, true);
+}
+
 
 void GTFReader::PrintGeneAssociations() {
 
-    trans_chromosomal_pairs.Consolidate(this, 100);
-    trans_chromosomal_splices.Consolidate(this, 0);
-    
-    cis_chromosomal_pairs.Consolidate(this, 100);
-    cis_chromosomal_splices.Consolidate(this, 0);
-    
-    //trans_chromosomal_pairs.Print();
-    //trans_chromosomal_splices.Print();
-    
     //Open output file
-    ofstream gtffile, logfile, readfile;
-    gtffile.open("read_intervals.gtf");
+    ofstream interchromosomal_file, intrachromosomal_file, unannotated_file, circular_file;
+    ofstream logfile, readfile;
+    interchromosomal_file.open("interchromosomal_intervals.gtf");
+    intrachromosomal_file.open("intrachromosomal_intervals.gtf");
+    unannotated_file.open("unannotated_intervals.gtf");
+    circular_file.open("circular_intervals.gtf");
 	logfile.open("read_intervals.txt");
 	readfile.open("read_ids.txt");
 
-    logfile << "Interchromosomal Intervals" << endl;
-    trans_chromosomal_pairs.Intersect(trans_chromosomal_splices);
-    trans_chromosomal_pairs.WriteGTF(gtffile);
-    trans_chromosomal_pairs.WriteSplicedMatePairs(logfile, readfile);
+    interchromosomal_pairs.Consolidate(this, 100);
+    interchromosomal_splices.Consolidate(this, 0);
+    interchromosomal_pairs.Intersect(interchromosomal_splices, 100);
+    logfile << "Inter-Chromosomal Intervals" << endl;
+    interchromosomal_pairs.WriteGTF(interchromosomal_file);
+    interchromosomal_pairs.WriteSplicedMatePairs(logfile, readfile);
     logfile << endl;
-    logfile << "Intrachromosomal Intervals" << endl;
-    cis_chromosomal_pairs.Intersect(cis_chromosomal_splices);
-    cis_chromosomal_pairs.WriteGTF(gtffile);
-    cis_chromosomal_pairs.WriteSplicedMatePairs(logfile, readfile);
+    interchromosomal_pairs.Clear();
     
-    gtffile.close();
+    intrachromosomal_pairs.Consolidate(this, 100);
+    intrachromosomal_splices.Consolidate(this, 0);
+    intrachromosomal_pairs.Intersect(intrachromosomal_splices, 100);
+    logfile << "Intra-Chromosomal Intervals" << endl;
+    intrachromosomal_pairs.WriteGTF(intrachromosomal_file);
+    intrachromosomal_pairs.WriteSplicedMatePairs(logfile, readfile);
+    logfile << endl;
+    intrachromosomal_pairs.Clear();
+    
+    intragene_unannotated_pairs.Consolidate(this, 100);
+    intragene_unannotated_splices.Consolidate(this, 0);
+    intragene_unannotated_pairs.Intersect(intragene_unannotated_splices, 100);
+    logfile << "Intra-Gene Unannotated Intervals" << endl;
+    intragene_unannotated_pairs.WriteGTF(unannotated_file);
+    intragene_unannotated_pairs.WriteSplicedMatePairs(logfile, readfile);
+    logfile << endl;
+    intragene_unannotated_pairs.Clear();
+    
+    intragene_circular_pairs.Consolidate(this, 100);
+    intragene_circular_splices.Consolidate(this, 0);
+    intragene_circular_pairs.Intersect(intragene_circular_splices, 100); 
+    logfile << "Intra-Gene Circular Intervals" << endl;
+    intragene_circular_pairs.WriteGTF(circular_file);
+    intragene_circular_pairs.WriteSplicedMatePairs(logfile, readfile);
+    logfile << endl;
+    intragene_circular_pairs.Clear();
+    
+    interchromosomal_file.close();
+    intrachromosomal_file.close();
+    unannotated_file.close();
+    circular_file.close();
     logfile.close();
     readfile.close();
     
-    /*
-    printf("CircRNA Reads\n");
-    for (circ_graph::iterator it = circ.begin(); it != circ.end(); ++it) {
-        it->second.Print();
-    }
-    */
-    
-    /*
-    //Go through all the map elements
-    printf("GTF Gene Links\n");
-    for (gene_graph::iterator it = graph.begin(); it != graph.end(); ++it) {
-        if ((it->second.splicedCount > 0) && (it->second.pairedCount > 0)) {
-            it->second.Print();
-        }
-    }
-    */
 }
 
 void GTFReader::Test() {
