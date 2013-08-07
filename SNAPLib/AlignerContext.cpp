@@ -64,6 +64,7 @@ AlignerContext::~AlignerContext()
     
         //REALLY BAD PLACE FOR THIS
         gtf->PrintGeneAssociations();
+        gtf->WriteReadCounts();
         
         delete gtf;
     }

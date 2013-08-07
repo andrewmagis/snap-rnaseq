@@ -147,11 +147,16 @@ class GTFFeature {
         GTFFeature& operator=(const GTFFeature &rhs);
         bool operator<(const GTFFeature &rhs) const;
         
+        unsigned Start() const { return start; };
+        string TranscriptName() const;
+        string GeneName() const;
         unsigned Length() const;
         bool GetAttribute(string key, string &value) const;
         void Print() const;
         
     protected:
+    
+        void IncrementReadCount() { read_count++; };
     
         string chr;
         string source;
@@ -164,13 +169,13 @@ class GTFFeature {
         string gene_id;
         string transcript_id;
         string gene_name;
+        string transcript_name;
         std::map<std::string, std::string> attributes;
-        
-        unsigned count;
+        unsigned read_count;
 
 };
 
-typedef std::vector<GTFFeature> feature_list;
+typedef std::vector<GTFFeature*> feature_list;
 typedef std::pair<unsigned, unsigned> junction;
 
 class GTFTranscript {
@@ -179,7 +184,7 @@ class GTFTranscript {
     
     public:
         
-        GTFTranscript(string chr, string gene_id, string transcript_id, unsigned start, unsigned end);
+        GTFTranscript(string chr, string gene_id, string transcript_id, string gene_name, string transcript_name, unsigned start, unsigned end);
         GTFTranscript(const GTFTranscript &rhs);
         virtual ~GTFTranscript();
         GTFTranscript& operator=(const GTFTranscript &rhs);
@@ -191,18 +196,27 @@ class GTFTranscript {
         void Junctions(unsigned start, unsigned span, std::vector<junction> &junctions) const;
         void WriteFASTA(const Genome *genome, std::ofstream &outfile) const;
         
+        void WriteReadCountID(ofstream &outfile) const;
+        void WriteReadCountName(ofstream &outfile) const;
+        
     protected:
     
         void UpdateBoundaries(unsigned start, unsigned end);
         void Process();
+        void IncrementReadCount();
     
         unsigned start;
         unsigned end;
         string chr;
         string gene_id;
+        string gene_name;
         string transcript_id;
+        string transcript_name;
+        
         feature_list features;
         feature_list exons;
+        unsigned read_count;
+        pthread_mutex_t mutex;
 
 };
 
@@ -224,19 +238,26 @@ class GTFGene {
         bool CheckBoundary(string query_chr, unsigned query_pos, unsigned buffer=1000) const;
         void Print() const;
         
+        void WriteReadCountID(ofstream &outfile) const;
+        void WriteReadCountName(ofstream &outfile) const;
+        
     protected:
     
         void UpdateBoundaries(unsigned start, unsigned end);
+        void IncrementReadCount();
     
         string chr;
         string gene_id;
         string gene_name;
         unsigned start;
         unsigned end;
+        feature_list features;
+        unsigned read_count;
+        pthread_mutex_t mutex;
                           
 };        
 
-typedef std::vector<GTFFeature> feature_map;
+typedef std::vector<GTFFeature*> feature_map;
 typedef std::map<std::string, GTFTranscript> transcript_map;
 typedef std::map<std::string, GTFGene> gene_map;
 
@@ -251,10 +272,13 @@ class GTFReader {
         const GTFTranscript& GetTranscript(string transcript_id) const;
         const GTFGene& GetGene(string gene_id) const;
         unsigned Size() const { return transcripts.size(); };
+        
         void IntervalGenes(std::string chr, unsigned start, unsigned stop, std::vector<GTFGene> &results);
+        void IntervalTranscripts(std::string chr, unsigned start, unsigned stop, std::vector<GTFTranscript> &results);
+        void IntervalFeatures(std::string chr, unsigned start, unsigned stop, std::vector<GTFFeature*> &results);
         
         //Function for incrementing read counts for each gene and transcript
-        void IncrementReadCount(string transcript_id0, unsigned start0, unsigned end0, string transcript_id1, unsigned start1, unsigned end1);
+        void IncrementReadCount(string transcript_id0, unsigned transcript_start0, unsigned start0, unsigned length0, string transcript_id1, unsigned transcript_start1, unsigned start1, unsigned length1);
         
         //Functions for building the transcriptome file
         void BuildTranscriptome(const Genome *genome);
@@ -272,6 +296,7 @@ class GTFReader {
         void InterchromosomalSplice(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id);
 
         void PrintGeneAssociations();
+        void WriteReadCounts();
                
         void Test();
     
@@ -291,8 +316,9 @@ class GTFReader {
                 
         std::vector<Interval<GTFTranscript*> > transcript_intervals;
         IntervalTree<GTFTranscript*> transcript_tree;
-        
-        
+    
+        std::vector<Interval<GTFFeature*> > feature_intervals;
+        IntervalTree<GTFFeature*> feature_tree;    
         
         //Reads that map within a single gene (but unannotated)
         ReadIntervalMap intragene_unannotated_pairs;

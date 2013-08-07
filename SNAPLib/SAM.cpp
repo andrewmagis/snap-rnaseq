@@ -600,9 +600,10 @@ SAMWriter::generateSAMText(
         tags += "\tXA:Z:DiffChr";
     }
     
-    if (flag & (1 << UNANNOTATED)) {
-        tags += "\tXA:Z:Unannotated";
-    }
+    
+    //if (flag & (1 << UNANNOTATED)) {
+     //   tags += "\tXA:Z:Unannotated";
+    //}
     
     if (flag & (1 << CIRCULAR)) {
         tags += "\tXA:Z:Circular";
