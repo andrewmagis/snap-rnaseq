@@ -93,20 +93,9 @@ class AlignmentFilter {
         void FindPartialMatches(PairedAlignmentResult* result, AlignmentPair &pair);
         
         //Called on all unaligned reads to look for unknown splice junctions
-        void UnalignedRead(Read *read);
-        bool ProcessSplices(std::vector<AlignmentPair> &pairs);
-        
-        //Functions for spliced reads
-        //void ForwardSplicedRead(unsigned genomeLocation0, std::set<unsigned> &seeds0, unsigned genomeLocation1, std::set<unsigned> &seeds1);
-        //void BackSplicedRead(unsigned genomeLocation0, std::set<unsigned> &seeds0, unsigned genomeLocation1, std::set<unsigned> &seeds1);
-        
-        //Functions for spliced reads
-        //void SplicedRead(unsigned genomeLocation0, unsigned genomeLocation1);
-        //void BacksplicedRead(Read* read, unsigned genomeLocation0, unsigned offset0, unsigned length0, unsigned genomeLocation1, unsigned offset1, unsigned length1);
-        
-        //Functions for circularized pairs and backsplices
-        //void CircularizedPair(PairedAlignmentResult* result, AlignmentPair &pair);
-        
+        void UnalignedRead(Read *read, unsigned minDiff);
+        bool ProcessSplices(std::vector<AlignmentPair> &pairs, unsigned minDiff);
+              
         //Temp printing
         void PrintMaps(seed_map &map, seed_map &mapRC);
         

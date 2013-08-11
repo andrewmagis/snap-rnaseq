@@ -383,7 +383,11 @@ void RNASeqAlignerContext::runIterationThread()
             int maxDist = this->maxDist;
             bool useful0 = read0.getDataLength() >= 50 && (int)read0.countOfNs() <= maxDist;
             bool useful1 = read1.getDataLength() >= 50 && (int)read1.countOfNs() <= maxDist;
-            if (!useful0 && !useful1) {
+            
+            bool quality0 = read0.qualityFilter(options->minPercentAbovePhred, options->minPhred, options->phredOffset);
+            bool quality1 = read1.qualityFilter(options->minPercentAbovePhred, options->minPhred, options->phredOffset);
+
+            if ((!useful0 && !useful1) || (!quality0 || !quality0)) {
                 PairedAlignmentResult result;
                 result.isTranscriptome[0] = false;
                 result.isTranscriptome[1] = false;
@@ -395,6 +399,7 @@ void RNASeqAlignerContext::runIterationThread()
                     samWriter->writePair(&read0, &read1, &result);
                 }
                 continue;
+
             } else {
                 // Here one the reads might still be hopeless, but maybe we can align the other.
                 stats->usefulReads += (useful0 && useful1) ? 2 : 1;

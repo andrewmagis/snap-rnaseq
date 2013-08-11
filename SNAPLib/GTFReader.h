@@ -55,6 +55,7 @@ class ReadInterval {
        
         void WriteGTF(ofstream &outfile, unsigned intersection) const;
         void Write(ofstream &outfile, unsigned intersection) const;
+        void Write(ofstream &outfile) const;
         void Print() const;
         void GetGeneInfo(GTFReader *gtf);
     
@@ -70,6 +71,7 @@ class ReadInterval {
         set<string> gene_names;
         bool is_spliced;
         bool consolidated;
+        bool counted;
         
         //Pointer to mate(s)
         set<ReadInterval*> mate;
@@ -97,6 +99,7 @@ class ReadIntervalPair {
         ReadInterval *interval1;
         ReadInterval *interval2;
         set<string> intersection;
+        bool consolidated;
         
 };
 
@@ -113,7 +116,7 @@ class ReadIntervalMap {
         
         void AddInterval(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id, bool is_spliced);
         void Consolidate(GTFReader *gtf, unsigned buffer);
-        void Intersect(const ReadIntervalMap &map, unsigned buffer);
+        void Intersect(const ReadIntervalMap &map, unsigned buffer, unsigned minCount);
         
         void WriteSplicedMatePairs(ofstream &logfile, ofstream &readfile);
         void WriteGTF(ofstream &outfile);
@@ -123,7 +126,7 @@ class ReadIntervalMap {
 
         unsigned ConsolidateReadIntervals(unsigned buffer);
         pthread_mutex_t mutex;
-  
+        
         //Vector of all paired-end reads that are not between genes
         std::vector<Interval<ReadInterval*> > read_intervals;
         IntervalTree<ReadInterval*> read_tree;  
@@ -148,6 +151,7 @@ class GTFFeature {
         bool operator<(const GTFFeature &rhs) const;
         
         unsigned Start() const { return start; };
+        unsigned ReadCount() const { return read_count; };
         string TranscriptName() const;
         string GeneName() const;
         unsigned Length() const;
@@ -192,6 +196,7 @@ class GTFTranscript {
         string Chr() const { return chr; };
         string TranscriptID() const { return transcript_id; };
         string GeneID() const { return gene_id; };
+        unsigned ReadCount() const { return read_count; };
         unsigned GenomicPosition(unsigned transcript_pos, unsigned span) const;
         void Junctions(unsigned start, unsigned span, std::vector<junction> &junctions) const;
         void WriteFASTA(const Genome *genome, std::ofstream &outfile) const;
@@ -235,6 +240,7 @@ class GTFGene {
         string Chr() const { return chr; };
         string GeneID() const { return gene_id; };
         string GeneName() const { return gene_name; };
+        unsigned ReadCount() const { return read_count; };
         bool CheckBoundary(string query_chr, unsigned query_pos, unsigned buffer=1000) const;
         void Print() const;
         

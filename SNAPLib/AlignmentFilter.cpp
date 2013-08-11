@@ -208,20 +208,20 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
         flag |= 1 << SECOND_NOT_ALIGNED;
         
         //You ought to eliminate this and instead only allow single matches to dictate splicing
-        UnalignedRead(read1);
-        UnalignedRead(read0);
+        //UnalignedRead(read1, seedLen);
+        //UnalignedRead(read0, seedLen);
 
     //If there are no alignments for mate0
     } else if (mate0.size() == 0) {
         
         flag |= 1 << FIRST_NOT_ALIGNED;
-        UnalignedRead(read1);
+        UnalignedRead(read1, seedLen);
     
     //If there are no alignments for mate1
     } else if (mate1.size() == 0) {
     
         flag |= 1 << SECOND_NOT_ALIGNED;
-        UnalignedRead(read0);    
+        UnalignedRead(read0, seedLen);    
     }
     
     //Iterate through all mate0;
@@ -437,6 +437,7 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
             gtf->IncrementReadCount(intragene_pairs[0].align1->transcript_id, intragene_pairs[0].align1->pos_original, intragene_pairs[0].align1->pos, read1->getDataLength(),
                                     intragene_pairs[0].align2->transcript_id, intragene_pairs[0].align2->pos_original, intragene_pairs[0].align2->pos, read0->getDataLength());
 
+        
         }
         
         return 1;
@@ -519,7 +520,7 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
           
 }
 
-void AlignmentFilter::UnalignedRead(Read *read) {
+void AlignmentFilter::UnalignedRead(Read *read, unsigned minDiff) {
 
     seed_map map, mapRC;
     
@@ -709,10 +710,10 @@ void AlignmentFilter::UnalignedRead(Read *read) {
     //Now we go through each of the three sets, prioritizing the cis-gene model, as before
     if (intragene_unannotated_splices.size() > 0) {
         
+        /*
         //If this set of splices passes the quality filter
-        if (ProcessSplices(intragene_unannotated_splices)) {
+        if (ProcessSplices(intragene_unannotated_splices, minDiff)) {
         
-            /*
             //We ignore this for now
             if (intragene_unannotated_splices[0].is_backspliced) {
                 gtf->IntrageneCircularSplice(intragene_unannotated_splices[0].align1->rname, intragene_unannotated_splices[0].align1->pos, intragene_unannotated_splices[0].align1->pos_end,
@@ -725,13 +726,12 @@ void AlignmentFilter::UnalignedRead(Read *read) {
                                                 intragene_unannotated_splices[0].align2->rname, intragene_unannotated_splices[0].align2->pos, intragene_unannotated_splices[0].align2->pos_end, 
                                                 string(read->getId(), read->getIdLength()));                              
             }
-            */
         } 
-
+        */
           
     } else if (intrachromosomal_splices.size() > 0) {
         
-        if (ProcessSplices(intrachromosomal_splices)) {
+        if (ProcessSplices(intrachromosomal_splices, minDiff)) {
             gtf->IntrachromosomalSplice(intrachromosomal_splices[0].align1->rname, intrachromosomal_splices[0].align1->pos, intrachromosomal_splices[0].align1->pos_end,
                                         intrachromosomal_splices[0].align2->rname, intrachromosomal_splices[0].align2->pos, intrachromosomal_splices[0].align2->pos_end, 
                                         string(read->getId(), read->getIdLength()));  
@@ -740,7 +740,7 @@ void AlignmentFilter::UnalignedRead(Read *read) {
 
     } else if (interchromosomal_splices.size() > 0) {
     
-        if (ProcessSplices(interchromosomal_splices)) {
+        if (ProcessSplices(interchromosomal_splices, minDiff)) {
             gtf->InterchromosomalSplice(interchromosomal_splices[0].align1->rname, interchromosomal_splices[0].align1->pos, interchromosomal_splices[0].align1->pos_end,
                                         interchromosomal_splices[0].align2->rname, interchromosomal_splices[0].align2->pos, interchromosomal_splices[0].align2->pos_end, 
                                         string(read->getId(), read->getIdLength()));  
@@ -767,7 +767,7 @@ void AlignmentFilter::UnalignedRead(Read *read) {
     
 }
 
-bool AlignmentFilter::ProcessSplices(std::vector<AlignmentPair> &pairs) {
+bool AlignmentFilter::ProcessSplices(std::vector<AlignmentPair> &pairs, unsigned minDiff) {
 
      if (pairs.size() == 1) {
         return true;
@@ -781,7 +781,7 @@ bool AlignmentFilter::ProcessSplices(std::vector<AlignmentPair> &pairs) {
                                                   
         //Check to see if the best alignment exceeds the second best alignment by at least confDiff
         unsigned diff = pairs[0].score - pairs[1].score;              
-        if (diff >= confDiff) {
+        if (diff >= minDiff) {
             return true; 
         } else {
             return false;       

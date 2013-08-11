@@ -194,6 +194,19 @@ public:
             }
             return count;
         }
+        
+        bool qualityFilter(float min_percent, unsigned min_qual, unsigned offset=33) const {        
+            unsigned count = 0;
+            for (unsigned i = 0; i < dataLength; i++) {
+                if (((char)quality[i])-offset >= min_qual) {
+                    count++;
+                }
+            }
+            if ((float(count)/float(dataLength))*100.f >= min_percent) {
+                return true;
+            }
+            return false; 
+        }
 
         void computeReverseCompliment(char *outputBuffer) { // Caller guarantees that outputBuffer is at least getDataLength() bytes
             for (unsigned i = 0; i < dataLength; i++) {

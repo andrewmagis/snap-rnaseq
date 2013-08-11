@@ -118,12 +118,12 @@ RNASeqPairedEndAligner::RNASeqPairedEndAligner(
          unsigned      adaptiveConfDiffThreshold_)*/
 
 
-    //pairedAligner = new SmarterPairedEndAligner(index, maxReadSize, confDiff + 1, maxHits, maxK,
-    //                                maxSeeds, minSpacing, maxSpacing, adaptiveConfDiffThreshold);
-
     // Create single-end aligners.
     singleAligner = new BaseAligner(index, confDiff + 1, maxHits, maxK, maxReadSize,
                                     maxSeeds, 1000000 /* lvLimit */, adaptiveConfDiffThreshold);
+                                    
+    mateAligner = new BaseAligner(index, confDiff, maxHits, maxK, maxReadSize,
+                                  maxSeeds, 1000000 /* lvLimit */, adaptiveConfDiffThreshold, &lv);
                                     
     transcriptomeAligner = new BaseAligner(transcriptome, confDiff + 1, maxHits, maxK, maxReadSize,
                                     maxSeeds, 1000000 /* lvLimit */, adaptiveConfDiffThreshold);
@@ -138,12 +138,19 @@ RNASeqPairedEndAligner::~RNASeqPairedEndAligner()
     delete[] buckets;
 }
 
+
 void RNASeqPairedEndAligner::align(Read *read0, Read *read1, PairedAlignmentResult *result)
 {
-   
+      
     //Create an AlignmentFilter for this read
     AlignmentFilter filter(read0, read1, index->getGenome(), transcriptome->getGenome(), gtf, minSpacing, maxSpacing, confDiff, maxDist, index->getSeedLength(), specialAligner);
 
+    unsigned loc0, loc1;
+    bool rc0, rc1;
+    int score0, score1;
+    AlignmentResult status0, status1;
+
+    /*
     //Make this variable set by the user 
     int maxHitsToGet = 5;
     
@@ -162,8 +169,6 @@ void RNASeqPairedEndAligner::align(Read *read0, Read *read1, PairedAlignmentResu
     bool rc0, rc1;
     int score0, score1;
     AlignmentResult status0, status1;
-    
-    //pairedAligner->align(read0, read1, result);
     
     singleAligner->setExplorePopularSeeds(explorePopularSeeds);
     singleAligner->setReadId(0);      
@@ -188,8 +193,15 @@ void RNASeqPairedEndAligner::align(Read *read0, Read *read1, PairedAlignmentResu
     delete[] genome_multiHitLocations1;
     delete[] genome_multiHitRCs1;
     delete[] genome_multiHitScores1;
+    */
     
-    maxHitsToGet = 2000;
+    
+    //align2(read0, read1, result);
+    
+    //filter.AddAlignment(result->location[0], result->isRC[0], result->score[0], false, false);
+    //filter.AddAlignment(result->location[1], result->isRC[1], result->score[1], false, true);
+    
+    unsigned maxHitsToGet = 2000;
         
     int       transcriptome_multiHitsFound0;
     unsigned  *transcriptome_multiHitLocations0 = new unsigned[maxHitsToGet];
@@ -208,14 +220,15 @@ void RNASeqPairedEndAligner::align(Read *read0, Read *read1, PairedAlignmentResu
     transcriptomeAligner->setReadId(1);      
     status0 = transcriptomeAligner->AlignRead(read1, &loc1, &rc1, &score1, 0, 0, false, maxHitsToGet, &transcriptome_multiHitsFound1, transcriptome_multiHitLocations1, transcriptome_multiHitRCs1, transcriptome_multiHitScores1, true);            
     
-    //Write out reads
+    //Add reads to filter
     for (int i = 0; i < transcriptome_multiHitsFound0; ++i) {
         filter.AddAlignment(transcriptome_multiHitLocations0[i], transcriptome_multiHitRCs0[i], transcriptome_multiHitScores0[i], true, false);
     }
+    
     for (int i = 0; i < transcriptome_multiHitsFound1; ++i) {
         filter.AddAlignment(transcriptome_multiHitLocations1[i], transcriptome_multiHitRCs1[i], transcriptome_multiHitScores1[i], true, true);
-    }
-        
+    }    
+    
     //Now delete the memory
     delete[] transcriptome_multiHitLocations0;
     delete[] transcriptome_multiHitRCs0;
@@ -224,13 +237,63 @@ void RNASeqPairedEndAligner::align(Read *read0, Read *read1, PairedAlignmentResu
     delete[] transcriptome_multiHitRCs1;
     delete[] transcriptome_multiHitScores1;  
     
+    //If no hits were found, search the genome
+    if (transcriptome_multiHitsFound0 == 0) {
+    
+        unsigned maxHitsToGet = 5;
+        int       genome_multiHitsFound0;
+        unsigned  *genome_multiHitLocations0 = new unsigned[maxHitsToGet];
+        bool      *genome_multiHitRCs0 = new bool[maxHitsToGet];
+        int       *genome_multiHitScores0 = new int[maxHitsToGet];         
+        
+        singleAligner->setReadId(0);      
+        status0 = singleAligner->AlignRead(read0, &loc0, &rc0, &score0, 0, 0, false, maxHitsToGet, &genome_multiHitsFound0, genome_multiHitLocations0, genome_multiHitRCs0, genome_multiHitScores0);            
+             
+        //Add genome multihits
+        for (int i = 0; i < genome_multiHitsFound0; ++i) {
+            filter.AddAlignment(genome_multiHitLocations0[i], genome_multiHitRCs0[i], genome_multiHitScores0[i], false, false);
+        }
+        
+        delete[] genome_multiHitLocations0;
+        delete[] genome_multiHitRCs0;
+        delete[] genome_multiHitScores0;
+                  
+    }
+    
+    //If no hits were found, search the genome
+    if (transcriptome_multiHitsFound1 == 0) {
+    
+        unsigned maxHitsToGet = 5;
+        int       genome_multiHitsFound0;
+        unsigned  *genome_multiHitLocations0 = new unsigned[maxHitsToGet];
+        bool      *genome_multiHitRCs0 = new bool[maxHitsToGet];
+        int       *genome_multiHitScores0 = new int[maxHitsToGet];         
+        
+        singleAligner->setReadId(0);      
+        status0 = singleAligner->AlignRead(read1, &loc0, &rc0, &score0, 0, 0, false, maxHitsToGet, &genome_multiHitsFound0, genome_multiHitLocations0, genome_multiHitRCs0, genome_multiHitScores0);            
+             
+        //Add genome multihits
+        for (int i = 0; i < genome_multiHitsFound0; ++i) {
+            filter.AddAlignment(genome_multiHitLocations0[i], genome_multiHitRCs0[i], genome_multiHitScores0[i], false, true);
+        }
+        
+        delete[] genome_multiHitLocations0;
+        delete[] genome_multiHitRCs0;
+        delete[] genome_multiHitScores0;
+                  
+    }
+    
+    
+    //align2(read0, read1, result);
+    //filter.AddAlignment(result->location[0], result->isRC[0], result->score[0], false, false);
+    //filter.AddAlignment(result->location[1], result->isRC[1], result->score[1], false, true);
+       
     //Perform the primary filtering of all aligned reads
     unsigned status = filter.Filter(result);
-          
+    
 }
 
-/*
-void RNASeqPairedEndAligner::align(Read *read0, Read *read1, RNASeqPairedAlignmentResult *result)
+void RNASeqPairedEndAligner::align2(Read *read0, Read *read1, PairedAlignmentResult *result)
 {
     Read *reads[2] = {read0, read1};
     int numNotFound = 0;
@@ -397,7 +460,6 @@ void RNASeqPairedEndAligner::align(Read *read0, Read *read1, RNASeqPairedAlignme
             AlignmentResultToString(result->status[0]),
             AlignmentResultToString(result->status[1]));
 }
-*/
 
 void RNASeqPairedEndAligner::alignTogether(Read *reads[2], PairedAlignmentResult *result, int lowerBound[2])
 {
@@ -919,3 +981,105 @@ int RNASeqPairedEndAligner::getConfDiff(int seedsTried, int popularSeeds[2][2], 
         return confDiff;
     }
 }
+
+/*void RNASeqPairedEndAligner::align(Read *read0, Read *read1, PairedAlignmentResult *result)
+{
+      
+    //Create an AlignmentFilter for this read
+    AlignmentFilter filter(read0, read1, index->getGenome(), transcriptome->getGenome(), gtf, minSpacing, maxSpacing, confDiff, maxDist, index->getSeedLength(), specialAligner);
+
+    unsigned loc0, loc1;
+    bool rc0, rc1;
+    int score0, score1;
+    AlignmentResult status0, status1;
+
+    //Make this variable set by the user 
+    int maxHitsToGet = 5;
+    
+    //Define output for both mates
+    int       genome_multiHitsFound0;
+    unsigned  *genome_multiHitLocations0 = new unsigned[maxHitsToGet];
+    bool      *genome_multiHitRCs0 = new bool[maxHitsToGet];
+    int       *genome_multiHitScores0 = new int[maxHitsToGet]; 
+    int       genome_multiHitsFound1;
+    unsigned  *genome_multiHitLocations1 = new unsigned[maxHitsToGet];
+    bool      *genome_multiHitRCs1 = new bool[maxHitsToGet];
+    int       *genome_multiHitScores1 = new int[maxHitsToGet]; 
+    
+    
+    unsigned loc0, loc1;
+    bool rc0, rc1;
+    int score0, score1;
+    AlignmentResult status0, status1;
+    
+    singleAligner->setExplorePopularSeeds(explorePopularSeeds);
+    singleAligner->setReadId(0);      
+    status0 = singleAligner->AlignRead(read0, &loc0, &rc0, &score0, 0, 0, false, maxHitsToGet, &genome_multiHitsFound0, genome_multiHitLocations0, genome_multiHitRCs0, genome_multiHitScores0);            
+              
+    singleAligner->setExplorePopularSeeds(explorePopularSeeds);
+    singleAligner->setReadId(1);      
+    status0 = singleAligner->AlignRead(read1, &loc1, &rc1, &score1, 0, 0, false, maxHitsToGet, &genome_multiHitsFound1, genome_multiHitLocations1, genome_multiHitRCs1, genome_multiHitScores1);            
+ 
+    //Write out reads
+    for (int i = 0; i < genome_multiHitsFound0; ++i) {
+        filter.AddAlignment(genome_multiHitLocations0[i], genome_multiHitRCs0[i], genome_multiHitScores0[i], false, false);
+    }
+    for (int i = 0; i < genome_multiHitsFound1; ++i) {
+        filter.AddAlignment(genome_multiHitLocations1[i], genome_multiHitRCs1[i], genome_multiHitScores1[i], false, true);
+    }
+    
+    //Now delete the memory
+    delete[] genome_multiHitLocations0;
+    delete[] genome_multiHitRCs0;
+    delete[] genome_multiHitScores0;
+    delete[] genome_multiHitLocations1;
+    delete[] genome_multiHitRCs1;
+    delete[] genome_multiHitScores1;
+  
+    
+    
+    //align2(read0, read1, result);
+    
+    //filter.AddAlignment(result->location[0], result->isRC[0], result->score[0], false, false);
+    //filter.AddAlignment(result->location[1], result->isRC[1], result->score[1], false, true);
+    
+    unsigned maxHitsToGet = 2000;
+        
+    int       transcriptome_multiHitsFound0;
+    unsigned  *transcriptome_multiHitLocations0 = new unsigned[maxHitsToGet];
+    bool      *transcriptome_multiHitRCs0 = new bool[maxHitsToGet];
+    int       *transcriptome_multiHitScores0 = new int[maxHitsToGet]; 
+    int       transcriptome_multiHitsFound1;
+    unsigned  *transcriptome_multiHitLocations1 = new unsigned[maxHitsToGet];
+    bool      *transcriptome_multiHitRCs1 = new bool[maxHitsToGet];
+    int       *transcriptome_multiHitScores1 = new int[maxHitsToGet]; 
+    
+    transcriptomeAligner->setExplorePopularSeeds(explorePopularSeeds);
+    transcriptomeAligner->setReadId(0);      
+    status0 = transcriptomeAligner->AlignRead(read0, &loc0, &rc0, &score0, 0, 0, false, maxHitsToGet, &transcriptome_multiHitsFound0, transcriptome_multiHitLocations0, transcriptome_multiHitRCs0, transcriptome_multiHitScores0, true);            
+       
+    transcriptomeAligner->setExplorePopularSeeds(explorePopularSeeds);
+    transcriptomeAligner->setReadId(1);      
+    status0 = transcriptomeAligner->AlignRead(read1, &loc1, &rc1, &score1, 0, 0, false, maxHitsToGet, &transcriptome_multiHitsFound1, transcriptome_multiHitLocations1, transcriptome_multiHitRCs1, transcriptome_multiHitScores1, true);            
+    
+    //Write out reads
+    for (int i = 0; i < transcriptome_multiHitsFound0; ++i) {
+        filter.AddAlignment(transcriptome_multiHitLocations0[i], transcriptome_multiHitRCs0[i], transcriptome_multiHitScores0[i], true, false);
+    }
+    for (int i = 0; i < transcriptome_multiHitsFound1; ++i) {
+        filter.AddAlignment(transcriptome_multiHitLocations1[i], transcriptome_multiHitRCs1[i], transcriptome_multiHitScores1[i], true, true);
+    }
+        
+    //Now delete the memory
+    delete[] transcriptome_multiHitLocations0;
+    delete[] transcriptome_multiHitRCs0;
+    delete[] transcriptome_multiHitScores0;
+    delete[] transcriptome_multiHitLocations1;
+    delete[] transcriptome_multiHitRCs1;
+    delete[] transcriptome_multiHitScores1;  
+    
+    //Perform the primary filtering of all aligned reads
+    unsigned status = filter.Filter(result);
+    
+}
+*/

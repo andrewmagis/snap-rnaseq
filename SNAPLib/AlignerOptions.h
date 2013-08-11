@@ -70,6 +70,11 @@ struct AlignerOptions : public AbstractOptions
     unsigned            gapPenalty; // if non-zero use gap penalty aligner
     AbstractOptions    *extra; // extra options
     const char         *rgLineContents;
+    
+    //Quality filtering options
+    float minPercentAbovePhred;
+    unsigned minPhred;
+    unsigned phredOffset;
 
     void usage();
 

@@ -50,7 +50,10 @@ AlignerOptions::AlignerOptions(
 	useM(false),
     gapPenalty(0),
 	extra(NULL),
-    rgLineContents(NULL)
+    rgLineContents(NULL),
+    minPercentAbovePhred(90.0),
+    minPhred(20),
+    phredOffset(33)
 {
     if (forPairedEnd) {
         maxDist             = 15;
