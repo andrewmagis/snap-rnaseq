@@ -16,7 +16,7 @@ ifeq ($(UNAME), Darwin)
   LIBS += -lz
 endif
 
-CXX = g++43
+CXX = g++
 
 LIB_SRC = $(wildcard SNAPLib/*.cpp)
 LIB_OBJ = $(patsubst %.cpp, %.o, $(LIB_SRC))
