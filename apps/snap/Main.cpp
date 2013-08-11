@@ -34,24 +34,35 @@ Revision History:
 
 using namespace std;
 
-const char *SNAP_VERSION = "0.16alpha.24";
+const char *SNAP_VERSION = "0.1alpha";
 
 static void usage()
 {
     fprintf(stderr,
-            "Usage: snap <command> [<options>]\n"
+            "Usage: snap-rna <command> [<options>]\n"
             "Commands:\n"
-            "   index    build a genome index\n"
-            "   single   align single-end reads\n"
-            "   paired   align paired-end reads\n"
+            "   genome         build a genome index\n"
+            "   transcriptome  build a transcriptome index\n"
+            "   single         align single-end reads\n"
+            "   paired         align paired-end reads\n"
             "Type a command without arguments to see its help.\n");
+            
+    fprintf(stderr,
+            "TODO:\n"
+            "1. build transcriptome index\n"
+            "2. amountRemaining for queries\n"
+            "3. pairedEndAlignment struct\n"
+            "4. specialAligner\n"
+            "5. quality filtering\n"
+            "6. single end reads haha\n"); 
+            
     soft_exit(1);
 }
 
 
 int main(int argc, const char **argv)
 {
-    printf("Welcome to SNAP version %s.\n\n", SNAP_VERSION);
+    printf("Welcome to SNAP-RNA version %s.\n\n", SNAP_VERSION);
 
     if (argc < 2) {
         usage();

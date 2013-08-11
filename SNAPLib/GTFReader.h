@@ -1,3 +1,24 @@
+/*++
+
+Module Name:
+
+    GTFReader.h
+
+Abstract:
+
+    Handles reading in GTF and GFF3 format annotation files. 
+
+Authors:
+
+    Andrew Magis, June, 2013
+
+Environment:
+
+Revision History:
+
+--*/
+
+/*
 #pragma once
 
 //System includes
@@ -350,4 +371,6 @@ inline std::string ToString(const unsigned& arg)
   sprintf(buffer, "%u", arg) ;
   return std::string(buffer);
 }
+
+*/
 

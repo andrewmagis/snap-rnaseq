@@ -1,3 +1,25 @@
+/*++
+
+Module Name:
+
+    AlignmentFilter.h
+
+Abstract:
+
+    Filters transcriptome and genome alignments, allows for conversion from transcriptome
+    to genome coordinates. Also handles fusion gene searching
+
+Authors:
+
+    Andrew Magis, June, 2013
+
+Environment:
+
+Revision History:
+
+--*/
+
+/*
 
 #pragma once
 
@@ -115,4 +137,6 @@ class AlignmentFilter {
         SpecialAligner *specialAligner;
 
 };
+
+*/
 

@@ -1,4 +1,27 @@
+/*++
+
+Module Name:
+
+    AlignmentFilter.cpp
+
+Abstract:
+
+    Filters transcriptome and genome alignments, allows for conversion from transcriptome
+    to genome coordinates. Also handles fusion gene searching
+
+Authors:
+
+    Andrew Magis, June, 2013
+
+Environment:
+
+Revision History:
+
+--*/
+
 #include "AlignmentFilter.h"
+
+/*
 
 Alignment::Alignment(unsigned location_, bool isRC_, int score_, string rname_, unsigned pos_, unsigned pos_end_, unsigned pos_original_, string transcript_id_, string gene_id_, bool isTranscriptome_) 
     : location(location_), isRC(isRC_), score(score_), rname(rname_), pos(pos_), pos_end(pos_end_), pos_original(pos_original_), transcript_id(transcript_id_), gene_id(gene_id_), isTranscriptome(isTranscriptome_)
@@ -189,16 +212,15 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
     std::vector<AlignmentPair> intrachromosomal_pairs;
     std::vector<AlignmentPair> interchromosomal_pairs;
     
-    /*
-    printf("Align1\n");
-    for (alignment_map::iterator m0 = mate0.begin(); m0 != mate0.end(); ++m0) {
-        m0->second.Print();
-    }
-    printf("Align2\n");
-    for (alignment_map::iterator m1 = mate1.begin(); m1 != mate1.end(); ++m1) {
-        m1->second.Print();
-    }
-    */
+    
+//     printf("Align1\n");
+//     for (alignment_map::iterator m0 = mate0.begin(); m0 != mate0.end(); ++m0) {
+//         m0->second.Print();
+//     }
+//     printf("Align2\n");
+//     for (alignment_map::iterator m1 = mate1.begin(); m1 != mate1.end(); ++m1) {
+//         m1->second.Print();
+//     }
     
     char flag = 0;
     unsigned best_score = 10000;
@@ -380,27 +402,25 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
         }
     }
     
-    /*
-    printf("No RC Pairs: %u\n", no_rc.size());
-    for (vector<AlignmentPair>::iterator it = no_rc.begin(); it != no_rc.end(); ++it) {
-        it->Print();
-    }
-    
-    printf("Same Gene Pairs: %u\n", intragene_pairs.size());
-    for (vector<AlignmentPair>::iterator it = intragene_pairs.begin(); it != intragene_pairs.end(); ++it) {
-        it->Print();
-    }
-
-    printf("Same Chr Pairs\n");
-    for (vector<AlignmentPair>::iterator it = intrachromosomal_pairs.begin(); it != intrachromosomal_pairs.end(); ++it) {
-        it->Print();
-    }
-    
-    printf("Diff Chr Pairs\n");
-    for (vector<AlignmentPair>::iterator it = interchromosomal_pairs.begin(); it != interchromosomal_pairs.end(); ++it) {
-        it->Print();
-    }
-    */ 
+//     printf("No RC Pairs: %u\n", no_rc.size());
+//     for (vector<AlignmentPair>::iterator it = no_rc.begin(); it != no_rc.end(); ++it) {
+//         it->Print();
+//     }
+//     
+//     printf("Same Gene Pairs: %u\n", intragene_pairs.size());
+//     for (vector<AlignmentPair>::iterator it = intragene_pairs.begin(); it != intragene_pairs.end(); ++it) {
+//         it->Print();
+//     }
+// 
+//     printf("Same Chr Pairs\n");
+//     for (vector<AlignmentPair>::iterator it = intrachromosomal_pairs.begin(); it != intrachromosomal_pairs.end(); ++it) {
+//         it->Print();
+//     }
+//     
+//     printf("Diff Chr Pairs\n");
+//     for (vector<AlignmentPair>::iterator it = interchromosomal_pairs.begin(); it != interchromosomal_pairs.end(); ++it) {
+//         it->Print();
+//     }
 
     //Gene pairs always get priority.  If there is a paired end alignment
     if (intragene_pairs.size() > 0) {
@@ -411,27 +431,27 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
         //Here we check for negative reads which indicate circular RNAs
         if (result->status[0] == CertainHit) {
         
-            /*
+            
             //This is not working very well
             //Here we check for circularized pairs, as well as pairs that map to unannotated regions
-            if (intragene_pairs[0].is_unannotated) {
-                result->flag[0] |= 1 << UNANNOTATED;
-                result->flag[1] |= 1 << UNANNOTATED;
-                gtf->IntrageneUnannotatedPair(intragene_pairs[0].align1->rname, intragene_pairs[0].align1->pos, intragene_pairs[0].align1->pos_end,
-                                              intragene_pairs[0].align2->rname, intragene_pairs[0].align2->pos, intragene_pairs[0].align2->pos_end, 
-                                              string(read0->getId(), read0->getIdLength()));              
-            }
             
-            if (intragene_pairs[0].is_backspliced) {
-            
-                result->flag[0] |= 1 << CIRCULAR;
-                result->flag[1] |= 1 << CIRCULAR;
-                gtf->IntrageneCircularPair(intragene_pairs[0].align1->rname, intragene_pairs[0].align1->pos, intragene_pairs[0].align1->pos_end,
-                                           intragene_pairs[0].align2->rname, intragene_pairs[0].align2->pos, intragene_pairs[0].align2->pos_end, 
-                                           string(read0->getId(), read0->getIdLength()));                 
-            
-            }
-            */
+//             if (intragene_pairs[0].is_unannotated) {
+//                 result->flag[0] |= 1 << UNANNOTATED;
+//                 result->flag[1] |= 1 << UNANNOTATED;
+//                 gtf->IntrageneUnannotatedPair(intragene_pairs[0].align1->rname, intragene_pairs[0].align1->pos, intragene_pairs[0].align1->pos_end,
+//                                               intragene_pairs[0].align2->rname, intragene_pairs[0].align2->pos, intragene_pairs[0].align2->pos_end, 
+//                                               string(read0->getId(), read0->getIdLength()));              
+//             }
+//             
+//             if (intragene_pairs[0].is_backspliced) {
+//             
+//                 result->flag[0] |= 1 << CIRCULAR;
+//                 result->flag[1] |= 1 << CIRCULAR;
+//                 gtf->IntrageneCircularPair(intragene_pairs[0].align1->rname, intragene_pairs[0].align1->pos, intragene_pairs[0].align1->pos_end,
+//                                            intragene_pairs[0].align2->rname, intragene_pairs[0].align2->pos, intragene_pairs[0].align2->pos_end, 
+//                                            string(read0->getId(), read0->getIdLength()));                 
+//             
+//             }
             
             //Add as count to GTF as well
             gtf->IncrementReadCount(intragene_pairs[0].align1->transcript_id, intragene_pairs[0].align1->pos_original, intragene_pairs[0].align1->pos, read1->getDataLength(),
@@ -710,24 +730,22 @@ void AlignmentFilter::UnalignedRead(Read *read, unsigned minDiff) {
     //Now we go through each of the three sets, prioritizing the cis-gene model, as before
     if (intragene_unannotated_splices.size() > 0) {
         
-        /*
         //If this set of splices passes the quality filter
-        if (ProcessSplices(intragene_unannotated_splices, minDiff)) {
-        
-            //We ignore this for now
-            if (intragene_unannotated_splices[0].is_backspliced) {
-                gtf->IntrageneCircularSplice(intragene_unannotated_splices[0].align1->rname, intragene_unannotated_splices[0].align1->pos, intragene_unannotated_splices[0].align1->pos_end,
-                                             intragene_unannotated_splices[0].align2->rname, intragene_unannotated_splices[0].align2->pos, intragene_unannotated_splices[0].align2->pos_end, 
-                                             string(read->getId(), read->getIdLength()));   
-            
-            } else {   
-            
-                gtf->IntrageneUnannotatedSplice(intragene_unannotated_splices[0].align1->rname, intragene_unannotated_splices[0].align1->pos, intragene_unannotated_splices[0].align1->pos_end,
-                                                intragene_unannotated_splices[0].align2->rname, intragene_unannotated_splices[0].align2->pos, intragene_unannotated_splices[0].align2->pos_end, 
-                                                string(read->getId(), read->getIdLength()));                              
-            }
-        } 
-        */
+//         if (ProcessSplices(intragene_unannotated_splices, minDiff)) {
+//         
+//             //We ignore this for now
+//             if (intragene_unannotated_splices[0].is_backspliced) {
+//                 gtf->IntrageneCircularSplice(intragene_unannotated_splices[0].align1->rname, intragene_unannotated_splices[0].align1->pos, intragene_unannotated_splices[0].align1->pos_end,
+//                                              intragene_unannotated_splices[0].align2->rname, intragene_unannotated_splices[0].align2->pos, intragene_unannotated_splices[0].align2->pos_end, 
+//                                              string(read->getId(), read->getIdLength()));   
+//             
+//             } else {   
+//             
+//                 gtf->IntrageneUnannotatedSplice(intragene_unannotated_splices[0].align1->rname, intragene_unannotated_splices[0].align1->pos, intragene_unannotated_splices[0].align1->pos_end,
+//                                                 intragene_unannotated_splices[0].align2->rname, intragene_unannotated_splices[0].align2->pos, intragene_unannotated_splices[0].align2->pos_end, 
+//                                                 string(read->getId(), read->getIdLength()));                              
+//             }
+//         } 
           
     } else if (intrachromosomal_splices.size() > 0) {
         
@@ -972,4 +990,4 @@ void AlignmentFilter::PrintMaps(seed_map &map, seed_map &mapRC) {
         
     }
 }
-
+*/

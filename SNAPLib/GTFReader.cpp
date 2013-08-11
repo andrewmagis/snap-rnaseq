@@ -1,6 +1,28 @@
+/*++
+
+Module Name:
+
+    GTFReader.cpp
+
+Abstract:
+
+    Handles reading in GTF and GFF3 format annotation files. 
+
+Authors:
+
+    Andrew Magis, June, 2013
+
+Environment:
+
+Revision History:
+
+--*/
+
 //Source includes
 #include "GTFReader.h"
 
+
+/*
 //System includes
 #include <stdio.h>
 #include <stdlib.h>
@@ -383,14 +405,14 @@ unsigned ReadIntervalMap::ConsolidateReadIntervals(unsigned buffer) {
     
     } 
     
-    /*
-    //Delete all the original intervals that were zeroed out
-    for (std::vector<Interval<ReadInterval*> >::iterator it = read_intervals.begin(); it != read_intervals.end(); ++it) {
-        if (it->value->consolidated) {
-            delete it->value;
-        }
-    }
-    */
+    
+//     //Delete all the original intervals that were zeroed out
+//     for (std::vector<Interval<ReadInterval*> >::iterator it = read_intervals.begin(); it != read_intervals.end(); ++it) {
+//         if (it->value->consolidated) {
+//             delete it->value;
+//         }
+//     }
+    
     
     //Finally, assign set of new intervals to the old set, and return the size
     read_intervals = temp_intervals;
@@ -1220,12 +1242,12 @@ void GTFReader::IncrementReadCount(string transcript_id0, unsigned transcript_st
     gpos->second.IncrementReadCount();
     gpos->second.IncrementReadCount();    
       
-    /*
-    printf("Final\n");
-    for (std::set<string>::iterator it = final_ids.begin(); it != final_ids.end(); ++it) {
-        printf("%s\n", it->c_str());
-    }
-    */
+    
+//     printf("Final\n");
+//     for (std::set<string>::iterator it = final_ids.begin(); it != final_ids.end(); ++it) {
+//         printf("%s\n", it->c_str());
+//     }
+    
 }
 
 void GTFReader::IntervalFeatures(std::string chr, unsigned start, unsigned stop, std::vector<GTFFeature*> &results) {
@@ -1421,7 +1443,7 @@ void GTFReader::PrintGeneAssociations() {
 
 void GTFReader::Test() {
 
-    /*
+    
     GTFTranscript &transcript = GetTranscript("ENST00000489673");
 
     std::vector<junction> junctions = transcript.Junctions(1, 200);
@@ -1429,7 +1451,6 @@ void GTFReader::Test() {
     for (std::vector<junction>::iterator it = junctions.begin(); it != junctions.end(); ++it) {
         printf("[%d %d]\n", it->first, it->second);
     }
-    */
     
     std::vector<GTFGene> results;
     IntervalGenes("22", 42290565, 42359490, results);
@@ -1469,6 +1490,7 @@ void GTFReader::BuildTranscriptome(const Genome *genome) {
     printf("%llds.\n", loadTime / 1000);
 
 }
+*/
 
 /*
 int main(int argc, char *argv[]) {
