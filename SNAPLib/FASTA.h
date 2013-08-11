@@ -47,12 +47,3 @@ inline const char *diploidFASTASexPrefix(bool male)
 {
     return male ? "PATERNAL|" : "MATERNAL|";
 }
-
-//
-// Append a diploid genome to a single FASTA file.
-// 
-    bool
-AppendFASTADiploidGenome(const DiploidGenome *, FILE *fasta);
-
-    bool
-WriteFASTADiploidGenome(const DiploidGenome *, const char *fileName);

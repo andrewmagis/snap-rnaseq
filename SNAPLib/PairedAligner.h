@@ -25,6 +25,7 @@ Revision History:
 #pragma once
 #include "stdafx.h"
 #include "AlignerContext.h"
+#include "ReadSupplierQueue.h"
 
 struct PairedAlignerStats;
 
@@ -38,7 +39,7 @@ protected:
 
     // AlignerContext
     
-    virtual AlignerOptions* parseOptions(int argc, const char **argv, const char *version);
+    virtual AlignerOptions* parseOptions(int argc, const char **argv, const char *version, unsigned *argsConsumed);
 
     virtual void initialize();
 
@@ -56,8 +57,15 @@ protected:
 
 protected:
 
+    virtual void typeSpecificBeginIteration();
+    virtual void typeSpecificNextIteration();
+
+    PairedReadSupplierGenerator *pairedReadSupplierGenerator;
+ 
     int                 minSpacing;
     int                 maxSpacing;
+    bool                forceSpacing;
+    unsigned            intersectingAlignerMaxHits;
     const char         *fastqFile1;
     bool                ignoreMismatchedIDs;
 };
@@ -68,9 +76,12 @@ struct PairedAlignerOptions : public AlignerOptions
 
     virtual void usageMessage();
 
-    virtual bool parse(const char** argv, int argc, int& n);
+    virtual bool parse(const char** argv, int argc, int& n, bool *done);
+
+    virtual bool isPaired() { return true; }
 
     int minSpacing;
     int maxSpacing;
-    const char* fastqFile1;
+    bool forceSpacing;
+    unsigned intersectingAlignerMaxHits;
 };

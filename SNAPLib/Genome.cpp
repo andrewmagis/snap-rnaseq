@@ -26,13 +26,14 @@ Revision History:
 #include "Genome.h"
 #include "Compat.h"
 #include "BigAlloc.h"
+#include "exit.h"
 
 Genome::Genome(unsigned i_maxBases, unsigned nBasesStored) : maxBases(i_maxBases), minOffset(0), maxOffset(i_maxBases)
 {
     bases = ((char *) BigAlloc(nBasesStored + 2 * N_PADDING)) + N_PADDING;
     if (NULL == bases) {
         fprintf(stderr,"Genome: unable to allocate memory for %llu bases\n",(_int64)maxBases);
-        exit(1);
+        soft_exit(1);
     }
 
     // Add N's for the N_PADDING bases before and after the genome itself
@@ -46,6 +47,7 @@ Genome::Genome(unsigned i_maxBases, unsigned nBasesStored) : maxBases(i_maxBases
 
     nPieces = 0;
     pieces = new Piece[maxPieces];
+    piecesByName = NULL;
 }
 
     void
@@ -54,7 +56,7 @@ Genome::addData(const char *data, size_t len)
     if ((size_t)nBases + len > maxBases) {
         fprintf(stderr,"Tried to write beyond allocated genome size (or tried to write into a genome that was loaded from a file).\n");
         fprintf(stderr,"Size = %lld\n",(_int64)maxBases);
-        exit(1);
+        soft_exit(1);
     }
 
     memcpy(bases + nBases,data,len);
@@ -78,7 +80,7 @@ Genome::startPiece(const char *pieceName)
         Piece *newPieces = new Piece[newMaxPieces];
         if (NULL == newPieces) {
             fprintf(stderr,"Genome: unable to reallocate piece array to size %d\n",newMaxPieces);
-            exit(1);
+            soft_exit(1);
         }
         for (int i = 0; i < nPieces; i++) {
             newPieces[i] = pieces[i];
@@ -94,7 +96,7 @@ Genome::startPiece(const char *pieceName)
     pieces[nPieces].name = new char[len];
     if (NULL == pieces[nPieces].name) {
         fprintf(stderr,"Unable to allocate space for piece name\n");
-        exit(1);
+        soft_exit(1);
     }
 
     strncpy(pieces[nPieces].name,pieceName,len);
@@ -113,6 +115,9 @@ Genome::~Genome()
     }
 
     delete [] pieces;
+    if (piecesByName) {
+        delete [] piecesByName;
+    }
     pieces = NULL;
 }
 
@@ -239,7 +244,7 @@ Genome::loadFromFile(const char *fileName, unsigned i_minOffset, unsigned length
 
     if (0 != _fseek64bit(loadFile,i_minOffset,SEEK_CUR)) {
         fprintf(stderr,"Genome::loadFromFile: _fseek64bit failed\n");
-        exit(1);
+        soft_exit(1);
     }
 
     if (length != fread(genome->bases,1,length,loadFile)) {
@@ -250,7 +255,27 @@ Genome::loadFromFile(const char *fileName, unsigned i_minOffset, unsigned length
     }
 
     fclose(loadFile);
+    genome->sortPiecesByName();
     return genome;
+}
+
+    bool
+pieceComparator(
+    const Genome::Piece& a,
+    const Genome::Piece& b)
+{
+    return strcmp(a.name, b.name) < 0;
+}
+
+    void
+Genome::sortPiecesByName()
+{
+    if (piecesByName) {
+        delete [] piecesByName;
+    }
+    piecesByName = new Piece[nPieces];
+    memcpy(piecesByName, pieces, nPieces * sizeof(Piece));
+    std::sort(piecesByName, piecesByName + nPieces, pieceComparator);
 }
 
     bool
@@ -288,13 +313,38 @@ Genome::getSizeFromFile(const char *fileName, unsigned *nBases, unsigned *nPiece
 
 
     bool
-Genome::getOffsetOfPiece(const char *pieceName, unsigned *offset) const
+Genome::getOffsetOfPiece(const char *pieceName, unsigned *offset, int * index) const
 {
+    if (piecesByName) {
+        int low = 0;
+        int high = nPieces - 1;
+        while (low <= high) {
+            int mid = (low + high) / 2;
+            int c = strcmp(piecesByName[mid].name, pieceName);
+            if (c == 0) {
+                if (offset != NULL) {
+                    *offset = piecesByName[mid].beginningOffset;
+                }
+                if (index != NULL) {
+                    *index = mid;
+                }
+                return true;
+            } else if (c < 0) {
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
+        }
+        return false;
+    }
     for (int i = 0; i < nPieces; i++) {
         if (!strcmp(pieceName,pieces[i].name)) {
             if (NULL != offset) {
                 *offset = pieces[i].beginningOffset;
             }
+			if (index != NULL) {
+				*index = i;
+			}
             return true;
         }
     }
@@ -408,8 +458,7 @@ Genome::copy(bool copyX, bool copyY, bool copyM) const
             amountToCopy = getCountOfBases() - offsetInReference;
         }
 
-        unsigned amountRemaining = 0;
-        memcpy(dataBuffer,getSubstring(offsetInReference,amountToCopy,amountRemaining), amountToCopy);
+        memcpy(dataBuffer,getSubstring(offsetInReference,amountToCopy), amountToCopy);
         dataBuffer[amountToCopy] = '\0';
 
         newCopy->addData(dataBuffer);
@@ -420,172 +469,10 @@ Genome::copy(bool copyX, bool copyY, bool copyM) const
     return newCopy;
 }
 
-
-    DiploidGenome *
-DiploidGenome::Factory(const Genome *referenceGenome, bool isMale)
+unsigned DistanceBetweenGenomeLocations(unsigned locationA, unsigned locationB) 
 {
-    //
-    // This is just the special case where we use the same reference genome for both parents.
-    //
-    return Factory(referenceGenome, referenceGenome, isMale);
-}
+    unsigned largerGenomeOffset = __max(locationA, locationB);
+    unsigned smallerGenomeOffset = __min(locationA, locationB);
 
-    DiploidGenome *
-DiploidGenome::Factory(const Genome *motherReference, const Genome *fatherReference, bool isMale)
-{
-    //
-    // We have to create parent genomes that have the right set of chromosomes.  Make ParentA as the mother (i.e., include chrX and not
-    // chrY).
-    //
-    Genome *mom = motherReference->copyGenomeOneSex(false, true);   // Always get an X chromosome from mom
-    if (NULL == mom) {
-        fprintf(stderr,"DiploidGenome::Factory: Unable to allocate mom's genome.\n");
-        return NULL;
-    }
-
-    Genome *dad = fatherReference->copyGenomeOneSex(isMale, false);  // Get dad's Y if this is a male, otherwise dad's X
-    if (NULL == dad) {
-        fprintf(stderr,"DiploidGenome::Factory: Unable to allocate dad's genome.\n");
-        delete mom;
-        
-        return NULL;
-    }
-
-    DiploidGenome *diploidGenome = new DiploidGenome(mom, dad, true);
-    if (NULL == diploidGenome) {
-        fprintf(stderr,"DiploidGenome::Factory: Unable to allocate container.\n");  // Sometimes you write code that you just know will never execute.
-        delete mom;
-        delete dad;
-        return NULL;
-    }
-
-    return diploidGenome;
-}
-
-
-
-    DiploidGenome *
-DiploidGenome::Factory(const Genome *motherReference, const Genome *fatherReference)
-{
-    return new DiploidGenome(motherReference, fatherReference, false);
-}
-
-    DiploidGenome *
-DiploidGenome::CopyingFactory(const Genome *motherReference, const Genome *fatherReference)
-{
-    Genome *motherCopy = motherReference->copy();
-    if (NULL == motherCopy) {
-        fprintf(stderr,"DiploidGenome: unable to copy mother's genome\n");
-        return NULL;
-    }
-
-    Genome *fatherCopy = fatherReference->copy();
-    if (NULL == fatherCopy) {
-        fprintf(stderr,"DiploidGenome: unable to copy father's genome\n");
-        delete motherCopy;
-        return NULL;
-    }
-
-    DiploidGenome *diploidGenome = new DiploidGenome(motherCopy, fatherCopy, true);
-    if (NULL == diploidGenome) {
-        fprintf(stderr,"DiploidGenome: unable to allocate container.\n");
-        delete motherCopy;
-        delete fatherCopy;
-        return NULL;
-    }
-
-    return diploidGenome;
-}
-
-    const char *
-DiploidGenome::FilenameBase = "DiploidParent";
-
-
-    DiploidGenome *
-DiploidGenome::loadFromDirectory(const char *directoryName)
-{
-    size_t fileNameLen = strlen(directoryName) + 1 + strlen(FilenameBase) + 2;  // +1 is PATH_SEP, +2 is A/B and \0
-    char *filename = new char[fileNameLen];
-
-    if (NULL == filename) {
-        fprintf(stderr,"DiploidGenome::loadFromDirectory: failed to allocate filename buffer.\n");
-        return NULL;
-    }
-
-    sprintf(filename,"%s%c%s%c",directoryName,PATH_SEP,FilenameBase,'A');
-    const Genome *motherGenome = Genome::loadFromFile(filename);
-
-    if (NULL == motherGenome) {
-        fprintf(stderr,"DiploidGenome::loadFromDirectory: failed to load mother's genome.\n");
-        delete [] filename;
-        return NULL;
-    }
-
-    sprintf(filename,"%s%c%s%c",directoryName,PATH_SEP,FilenameBase,'B');
-    const Genome *fatherGenome = Genome::loadFromFile(filename);
-
-    if (NULL == fatherGenome) {
-        fprintf(stderr,"DiploidGenome::loadFromDirectory: failed to load father's genome.\n");
-        delete motherGenome;
-        delete [] filename;
-        return NULL;
-    }
-
-    delete [] filename;
-
-    DiploidGenome *diploidGenome = new DiploidGenome(motherGenome, fatherGenome, true);
-    if (NULL == diploidGenome) {
-        fprintf(stderr,"DiploidGenome::loadFromDirectory: failed to allocate DiploidGenome container.\n");
-        delete motherGenome;
-        delete fatherGenome;
-        return NULL;
-    }
-
-    return diploidGenome;
-}
-
-    bool
-DiploidGenome::saveToDirectory(const char *directoryName) const
-{
-
-    size_t fileNameLen = strlen(directoryName) + 1 + strlen(FilenameBase) + 2;  // +1 is PATH_SEP, +2 is A/B and \0
-    char *filename = new char[fileNameLen];
-
-    if (NULL == filename) {
-        fprintf(stderr,"DiploidGenome::saveToDirectory: failed to allocate filename buffer.\n");
-        return false;
-    }
-
-    sprintf(filename,"%s%c%s%c",directoryName,PATH_SEP,FilenameBase,'A');
-    if (!motherGenome->saveToFile(filename)) {
-        fprintf(stderr,"DiploidGenome::saveToDirectory: failed to save mother's genome.\n");
-        delete [] filename;
-        return false;
-    }
-
-    sprintf(filename,"%s%c%s%c",directoryName,PATH_SEP,FilenameBase,'B');
-    if (!fatherGenome->saveToFile(filename)) {
-        fprintf(stderr,"DiploidGenome::saveToDirectory: failed to save father's genome.\n");
-        delete motherGenome;
-        delete [] filename;
-        return false;
-    }
-
-    delete [] filename;
-    return true;
-}
-
-    const Genome *
-DiploidGenome::getGenome(bool fromMother) const
-{
-    if (fromMother) return motherGenome;
-    return fatherGenome;
-}
-
-DiploidGenome::~DiploidGenome()
-{
-    if (ownsGenomes) {
-        delete motherGenome;
-        delete fatherGenome;
-    }
+    return largerGenomeOffset - smallerGenomeOffset;
 }

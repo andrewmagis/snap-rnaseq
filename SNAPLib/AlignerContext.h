@@ -30,9 +30,9 @@ Revision History:
 #include "AlignerOptions.h"
 #include "AlignerStats.h"
 #include "ParallelTask.h"
-#include "GTFReader.h"
 
 class AlignerExtension;
+
 
 /*++
     Common context state shared across threads during alignment process
@@ -47,7 +47,7 @@ public:
 
     // running alignment
 
-    void runAlignment(int argc, const char **argv, const char *version);
+    void runAlignment(int argc, const char **argv, const char *version, unsigned *nArgsConsumed);
     
     // ParallelTask template
 
@@ -57,8 +57,6 @@ public:
 
     void finishThread(AlignerContext* common);
 
-protected:
-    
     void printStatsHeader();
     
     void printStats();
@@ -73,7 +71,7 @@ protected:
     // overrideable by concrete single/paired alignment subclasses
     
     // parse options from the command line
-    virtual AlignerOptions* parseOptions(int argc, const char **argv, const char *version) = 0;
+    virtual AlignerOptions* parseOptions(int argc, const char **argv, const char *version, unsigned *argsConsumed) = 0;
     
     // initialize from options
     virtual void initialize();
@@ -87,43 +85,40 @@ protected:
     // run single thread within single iteration
     virtual void runIterationThread() = 0;
 
-    // common state across all threads
-    GenomeIndex        *index;
-    GenomeIndex        *transcriptome;
-    GTFReader          *gtf;
-    ParallelSAMWriter  *parallelSamWriter;
-    _int64              alignStart;
-    _int64              alignTime;
-    RangeSplitter       fileSplitterState;
-    AlignerOptions     *options;
-    AlignerStats       *stats;
-    AlignerExtension   *extension;
+    virtual void typeSpecificBeginIteration() = 0;
+    virtual void typeSpecificNextIteration() = 0;
+
     friend class AlignerContext2;
-    unsigned            maxDist;
-    int                 numSeeds;
-    int                 maxHits;
-    int                 confDiff;
-    int                 adaptiveConfDiff;
-    bool                computeError;
-    const char         *inputFilename;
-    bool                inputFileIsFASTQ;   // Else SAM
-    RangeSplitter      *fileSplitter;
-    unsigned            selectivity;
-    bool                detailedStats;
-    ReadClippingType    clipping;
-    int                 argc;
-    const char        **argv;
-    const char         *version;
+ 
+    // common state across all threads
+    GenomeIndex                         *index;
+    ReadWriterSupplier                  *writerSupplier;
+    ReaderContext                        readerContext;
+    _int64                               alignStart;
+    _int64                               alignTime;
+    AlignerOptions                      *options;
+    AlignerStats                        *stats;
+    AlignerExtension                    *extension;
+    unsigned                             maxDist;
+    unsigned                             numSeedsFromCommandLine;
+    double                               seedCoverage;
+    int                                  maxHits;
+    bool                                 computeError;
+    bool                                 detailedStats;
+    ReadClippingType                     clipping;
+    unsigned                             extraSearchDepth;
+    int                                  argc;
+    const char                         **argv;
+    const char                          *version;
+    FILE                                *perfFile;
+
 
     // iteration variables
-    int                 confDiff_;
     int                 maxHits_;
     int                 maxDist_;
-    int                 numSeeds_;
-    int                 adaptiveConfDiff_;
 
     // Per-thread context state used during alignment process
-    SAMWriter          *samWriter;
+    ReadWriter         *readWriter;
 };
 
 // abstract class for extending base context

@@ -1,143 +1,16 @@
 #include "stdafx.h"
 #include "Compat.h"
 #include "LandauVishkin.h"
+#include "mapq.h"
+#include "Read.h"
+#include "BaseAligner.h"
+#include "Bam.h"
+#include "exit.h"
 
 using std::make_pair;
 using std::min;
 
-
-LandauVishkin::LandauVishkin(int cacheSize)
-{
-    for (int i = 0; i < MAX_K+1; i++) {
-        for (int j = 0; j < 2*MAX_K+1; j++) {
-            L[i][j] = -2;
-        }
-    }
-    if (cacheSize > 0) {
-        cache = new FixedSizeMap<_uint64, LVResult>();
-        cache->reserve(cacheSize);
-    } else {
-        cache = NULL;
-    }
-}
-
-
-LandauVishkin::~LandauVishkin()
-{
-    if (cache != NULL) {
-        delete cache;
-    }
-}
-
-
-int LandauVishkin::computeEditDistance(
-        const char* text, int textLen, const char* pattern, int patternLen, int k, _uint64 cacheKey) 
-{
-
-    _ASSERT(k < MAX_K);
-    k = min(MAX_K - 1, k); // enforce limit even in non-debug builds
-    if (NULL == text) {
-        // This happens when we're trying to read past the end of the genome.
-        return -1;
-    }
-
-    if (cache != NULL && cacheKey != 0) {
-        LVResult old = cache->get(cacheKey);
-        if (old.isValid() && (old.result != -1 || old.k >= k)) {
-            return old.result;
-        }
-    }
-      
-    const char* p = pattern;
-    const char* t = text;
-    int end = min(patternLen, textLen);
-    const char* pend = pattern + end;
-    while (p < pend) {
-        _uint64 x = *((_uint64*) p) ^ *((_uint64*) t);
-        if (x) {
-            unsigned long zeroes;
-            CountTrailingZeroes(x, zeroes);
-            zeroes >>= 3;
-            L[0][MAX_K] = min((int)(p - pattern) + (int)zeroes, end);
-            goto done1;
-        }
-        p += 8;
-        t += 8;
-    }
-    L[0][MAX_K] = end;
-done1:
-
-    if (L[0][MAX_K] == end) {
-        int result = (patternLen > end ? patternLen - end : 0); // Could need some deletions at the end
-        if (cache != NULL && cacheKey != 0) {
-            cache->put(cacheKey, LVResult(k, result));
-        }
-        return result;
-    }
-
-    for (int e = 1; e <= k; e++) {
-    
-        // Search d's in the order 0, 1, -1, 2, -2, etc to find an alignment with as few indels as possible.
-        for (int d = 0; d != e+1; d = (d > 0 ? -d : -d+1)) {
-                
-            int best = L[e-1][MAX_K+d] + 1; // up
-            int left = L[e-1][MAX_K+d-1];
-            if (left > best)
-                best = left;
-            int right = L[e-1][MAX_K+d+1] + 1;
-            if (right > best)
-                best = right;
-                
-            const char* p = pattern + best;
-            const char* t = (text + d) + best;
-            if (*p == *t) {
-                        
-                int end = min(patternLen, textLen - d);
-                const char* pend = pattern + end;
-
-                while (true) {
-                    _uint64 x = *((_uint64*) p) ^ *((_uint64*) t);
-                    if (x) {
-                        unsigned long zeroes;
-                        CountTrailingZeroes(x, zeroes);
-                        zeroes >>= 3;
-                        best = min((int)(p - pattern) + (int)zeroes, end);
-                        break;
-                    }
-                    p += 8;
-                    if (p >= pend) {
-                        best = end;
-                        break;
-                    }
-                    t += 8;
-                }
-            }
-
-            if (best == patternLen) {
-                if (cache != NULL && cacheKey != 0) {
-                    cache->put(cacheKey, LVResult(k, e));
-                }
-                return e;
-            }
-            L[e][MAX_K+d] = best;
-        }
-    }
-    
-    if (cache != NULL && cacheKey != 0) {
-        cache->put(cacheKey, LVResult(k, -1));
-    }
-    return -1;
-}
-
-
-void LandauVishkin::clearCache()
-{
-    if (cache != NULL) {
-        cache->clear();
-    }
-}
-
-
+ 
 LandauVishkinWithCigar::LandauVishkinWithCigar()
 {
     for (int i = 0; i < MAX_K+1; i++) {
@@ -151,16 +24,14 @@ LandauVishkinWithCigar::LandauVishkinWithCigar()
     Write cigar to buffer, return true if it fits
     null-terminates buffer if it returns false (i.e. fills up buffer)
 --*/
-bool writeCigar(char** o_buf, int* o_buflen, int count, char code, CigarFormat format, std::vector<unsigned> &tokens)
+bool writeCigar(char** o_buf, int* o_buflen, int count, char code, CigarFormat format)
 {
-            
-    tokens.push_back(count);
-    tokens.push_back(code);
-
+    _ASSERT(count >= 0);
     if (count <= 0) {
         return true;
     }
-    if (format == EXPANDED_CIGAR_STRING) {
+    switch (format) {
+    case EXPANDED_CIGAR_STRING: {
         int n = min(*o_buflen, count);
         for (int i = 0; i < n; i++) {
             *(*o_buf)++ = code;
@@ -170,7 +41,8 @@ bool writeCigar(char** o_buf, int* o_buflen, int count, char code, CigarFormat f
             *(*o_buf - 1) = '\0';
         }
         return *o_buflen > 0;
-    } else if (format == COMPACT_CIGAR_STRING) {
+    }
+    case COMPACT_CIGAR_STRING: {
         if (*o_buflen == 0) {
             *(*o_buf - 1) = '\0';
             return false;
@@ -184,7 +56,8 @@ bool writeCigar(char** o_buf, int* o_buflen, int count, char code, CigarFormat f
             *o_buflen -= written;
             return true;
         }
-    } else if (format == COMPACT_CIGAR_BINARY) {
+    }
+    case COMPACT_CIGAR_BINARY:
         // binary format with non-zero count byte followed by char (easier to examine programmatically)
         while (true) {
             if (*o_buflen < 3) {
@@ -199,10 +72,44 @@ bool writeCigar(char** o_buf, int* o_buflen, int count, char code, CigarFormat f
             }
             count -= 255;
         }
-    } else {
+    case BAM_CIGAR_OPS:
+        if (*o_buflen < 4 || count >= (1 << 28)) {
+            return false;
+        }
+        *(_uint32*)*o_buf = (count << 4) | BAMAlignment::CigarToCode[code];
+        *o_buf += 4;
+        *o_buflen -= 4;
+        return true;
+    default:
         printf("invalid cigar format %d\n", format);
-        exit(1);
+        soft_exit(1);
+        return false;        // Not reached.  This is just here to suppress a compiler warning.
+    } // switch
+}
+
+    void
+LandauVishkinWithCigar::printLinear(
+    char* buffer,
+    int bufferSize,
+    unsigned variant)
+{
+    _ASSERT(bufferSize >= 12);
+    int inserts = (variant >> CigarInsertCShift) & CigarInsertCount;
+    if (inserts > 0) {
+        *buffer++ = '0' + inserts;
+        *buffer++ = 'I';
+        for (int i = 0; i < inserts; i++) {
+            *buffer++ = VALUE_BASE[(variant >> (CigarInsertBShift + 2 * i)) & 3];
+        }
     }
+    unsigned op = variant & CigarOpcode;
+    if (op >= CigarReplace && op < CigarDelete) {
+        *buffer++ = 'X';
+        *buffer++ = VALUE_BASE[op - CigarReplace];
+    } else if (op == CigarDelete) {
+        *buffer++ = 'D';
+    }
+    *buffer++ = 0;
 }
 
 int LandauVishkinWithCigar::computeEditDistance(
@@ -210,14 +117,16 @@ int LandauVishkinWithCigar::computeEditDistance(
     const char* pattern, int patternLen,
     int k,
     char *cigarBuf, int cigarBufLen, bool useM, 
-    std::vector<unsigned> &tokens,
-    CigarFormat format 
-    )
+    CigarFormat format, int* cigarBufUsed)
 {
+    _ASSERT(patternLen >= 0 && textLen >= 0);
     _ASSERT(k < MAX_K);
     const char* p = pattern;
     const char* t = text;
-    if (NULL == text) return -1;            // This happens when we're trying to read past the end of the genome.
+    char* cigarBufStart = cigarBuf;
+    if (NULL == text) {
+        return -1;            // This happens when we're trying to read past the end of the genome.
+    }
 
     int end = min(patternLen, textLen);
     const char* pend = pattern + end;
@@ -238,20 +147,25 @@ done1:
     if (L[0][MAX_K] == end) {
         // We matched the text exactly; fill the CIGAR string with all ='s (or M's)
 		if (useM) {
-			if (! writeCigar(&cigarBuf, &cigarBufLen, patternLen, 'M', format, tokens)) {
+			if (! writeCigar(&cigarBuf, &cigarBufLen, patternLen, 'M', format)) {
 				return -2;
 			}
+            // todo: should this also write X's like '=' case? or is 'M' special?
 		} else {
-			if (! writeCigar(&cigarBuf, &cigarBufLen, end, '=', format, tokens)) {
+			if (! writeCigar(&cigarBuf, &cigarBufLen, end, '=', format)) {
 				return -2;
 			}
 			if (patternLen > end) {
 				// Also need to write a bunch of X's past the end of the text
-				if (! writeCigar(&cigarBuf, &cigarBufLen, patternLen - end, 'X', format, tokens)) {
+				if (! writeCigar(&cigarBuf, &cigarBufLen, patternLen - end, 'X', format)) {
 					return -2;
 				}
 			}
 		}
+        // todo: should this null-terminate?
+        if (cigarBufUsed != NULL) {
+            *cigarBufUsed = (int)(cigarBuf - cigarBufStart);
+        }
         return 0;
     }
 
@@ -316,7 +230,7 @@ done1:
 						// No inserts or deletes, and with useM equal and SNP look the same, so just
 						// emit a simple string.
 						//
-						if (!writeCigar(&cigarBuf, &cigarBufLen, patternLen, 'M', format, tokens)) {
+						if (!writeCigar(&cigarBuf, &cigarBufLen, patternLen, 'M', format)) {
 							return -2;
 						}
 					} else {
@@ -325,7 +239,7 @@ done1:
 						for (int i = 0; i < end; i++) {
 							bool newMatching = (pattern[i] == text[i]);
 							if (newMatching != matching) {
-								if (!writeCigar(&cigarBuf, &cigarBufLen, i - streakStart, (matching ? '=' : 'X'), format, tokens)) {
+								if (!writeCigar(&cigarBuf, &cigarBufLen, i - streakStart, (matching ? '=' : 'X'), format)) {
 									return -2;
 								}
 								matching = newMatching;
@@ -337,22 +251,26 @@ done1:
 						if (patternLen > streakStart) {
 							if (!matching) {
 								// Write out X's all the way to patternLen
-								if (!writeCigar(&cigarBuf, &cigarBufLen, patternLen - streakStart, 'X', format, tokens)) {
+								if (!writeCigar(&cigarBuf, &cigarBufLen, patternLen - streakStart, 'X', format)) {
 									return -2;
 								}
 							} else {
 								// Write out some ='s and then possibly X's if pattern is longer than text
-								if (!writeCigar(&cigarBuf, &cigarBufLen, end - streakStart, '=', format, tokens)) {
+								if (!writeCigar(&cigarBuf, &cigarBufLen, end - streakStart, '=', format)) {
 									return -2;
 								}
 								if (patternLen > end) {
-									if (!writeCigar(&cigarBuf, &cigarBufLen, patternLen - end, 'X', format, tokens)) {
+									if (!writeCigar(&cigarBuf, &cigarBufLen, patternLen - end, 'X', format)) {
 										return -2;
 									}
 								}
 							}
 						}
 					}
+                    *(cigarBuf - (cigarBufLen == 0 ? 1 : 0)) = '\0'; // terminate string
+                    if (cigarBufUsed != NULL) {
+                        *cigarBufUsed = (int)(cigarBuf - cigarBufStart);
+                    }
                     return e;
                 }
                 
@@ -408,7 +326,7 @@ done1:
 				} else {
 					// Write out ='s for the first patch of exact matches that brought us to L[0][0]
 					if (L[0][MAX_K+0] > 0) {
-						if (! writeCigar(&cigarBuf, &cigarBufLen, L[0][MAX_K+0], '=', format, tokens)) {
+						if (! writeCigar(&cigarBuf, &cigarBufLen, L[0][MAX_K+0], '=', format)) {
 							return -2;
 						}
 					}
@@ -428,17 +346,17 @@ done1:
 							accumulatedMs += actionCount;
 						} else {
 							if (accumulatedMs != 0) {
-								if (!writeCigar(&cigarBuf, &cigarBufLen, accumulatedMs, 'M', format, tokens)) {
+								if (!writeCigar(&cigarBuf, &cigarBufLen, accumulatedMs, 'M', format)) {
 									return -2;
 								}
 								accumulatedMs = 0;
 							}
-							if (!writeCigar(&cigarBuf, &cigarBufLen, actionCount, action, format, tokens)) {
+							if (!writeCigar(&cigarBuf, &cigarBufLen, actionCount, action, format)) {
 								return -2;
 							}
 						}
 					} else {
-						if (! writeCigar(&cigarBuf, &cigarBufLen, actionCount, action, format, tokens)) {
+						if (! writeCigar(&cigarBuf, &cigarBufLen, actionCount, action, format)) {
 							return -2;
 						}
 					}
@@ -447,7 +365,7 @@ done1:
 						if (useM) {
 							accumulatedMs += backtraceMatched[curE];
 						} else {
-							if (! writeCigar(&cigarBuf, &cigarBufLen, backtraceMatched[curE], '=', format, tokens)) {
+							if (! writeCigar(&cigarBuf, &cigarBufLen, backtraceMatched[curE], '=', format)) {
 								return -2;
 							}
 						}
@@ -458,11 +376,16 @@ done1:
 					//
 					// Write out the trailing Ms.
 					//
-					if (!writeCigar(&cigarBuf, &cigarBufLen, accumulatedMs, 'M', format, tokens)) {
+					if (!writeCigar(&cigarBuf, &cigarBufLen, accumulatedMs, 'M', format)) {
 						return -2;
 					}
 				}
-                *(cigarBuf - (cigarBufLen == 0 ? 1 : 0)) = '\0'; // terminate string
+                if (format != BAM_CIGAR_OPS) {
+                    *(cigarBuf - (cigarBufLen == 0 ? 1 : 0)) = '\0'; // terminate string
+                }
+                if (cigarBufUsed != NULL) {
+                    *cigarBufUsed = (int)(cigarBuf - cigarBufStart);
+                }
                 return e;
             }
         }
@@ -473,3 +396,120 @@ done1:
     return -1;
 }
 
+    int
+LandauVishkinWithCigar::linearizeCompactBinary(
+    _uint16* o_linear,
+    int referenceSize,
+    char* cigar,
+    int cigarSize,
+    char* sample,
+    int sampleSize)
+{
+    memset(o_linear, 0, referenceSize * 2); // zero-init
+    int ic = 0, ir = 0, is = 0; // index into cigar, linear/reference, and sample
+    while (ic < cigarSize) {
+        int n = (unsigned char) cigar[ic++];
+        char code = cigar[ic++];
+        int ii, base;
+        for (int i = 0; i < n; i++) {
+            if ((code != 'I' && ir >= referenceSize) || (code != 'D' && is >= sampleSize)) {
+                return ir;
+            }
+            if (code != 'D') {
+                base = sample[is] != 'N' ? BASE_VALUE[sample[is]] : 0;
+                is++;
+            }
+            switch (code) {
+            case '=':
+                ir++;
+                break;
+            case 'X':
+                o_linear[ir++] |= CigarReplace + base;
+                break;
+            case 'D':
+                o_linear[ir++] |= CigarDelete;
+                break;
+            case 'I':
+                ii = (o_linear[ir] >> CigarInsertCShift) & CigarInsertCount;
+                if (ii < 4) {
+                    o_linear[ir] = (base << (2 * ii + CigarInsertBShift)) | ((ii + 1) << CigarInsertCShift);
+                } else if (ii < 7) {
+                    o_linear[ir] = (o_linear[ir] & CigarInsertBases) | ((ii + 1) << CigarInsertCShift);
+                }
+                break;
+            default:
+                _ASSERT(false);
+            }
+        }
+    }
+    return ir;
+}
+
+    void 
+setLVProbabilities(double *i_indelProbabilities, double *i_phredToProbability, double mutationProbability)
+{
+    lv_indelProbabilities = i_indelProbabilities;
+
+    //
+    // Compute the phred table to incorporate the mutation probability, assuming that machine errors and mutations
+    // are independent (which there's no reason not to think is the case).  If P(A) and P(B) are independent, then
+    // P(A or B) = P(not (not-A and not-B)) = 1-(1-P(A))(1-P(B)).
+    //
+    for (unsigned i = 0; i < 255; i++) {
+        lv_phredToProbability[i] = 1.0-(1.0 - i_phredToProbability[i]) * (1.0 - mutationProbability);
+    }
+}
+
+    void
+initializeLVProbabilitiesToPhredPlus33()
+{
+    static bool alreadyInitialized = false;
+    if (alreadyInitialized) {
+        return;
+    }
+    alreadyInitialized = true;
+
+    //
+    // indel probability is .0001 for any indel (10% of a SNP real difference), and then 10% worse for each longer base.
+    //
+    _ASSERT(NULL == lv_phredToProbability);
+    lv_phredToProbability = (double *)BigAlloc(sizeof(double) * 256);
+
+    static const int maxIndels = 10000; // Way more than we'll see, and in practice enough to result in p=0.0;
+    _ASSERT(NULL == lv_indelProbabilities);
+    lv_indelProbabilities = (double *)BigAlloc(sizeof(double) * maxIndels);
+ 
+    const double mutationRate = SNP_PROB;
+    lv_indelProbabilities = new double[maxIndels+1];
+    lv_indelProbabilities[0] = 1.0;
+    lv_indelProbabilities[1] = GAP_OPEN_PROB;
+    for (int i = 2; i <= maxIndels; i++) {
+        lv_indelProbabilities[i] = lv_indelProbabilities[i-1] * GAP_EXTEND_PROB;
+    }
+
+    //
+    // Use 0.001 as the probability of a real SNP, then or it with the Phred+33 probability.
+    //
+    for (int i = 0; i < 33; i++) {
+        lv_phredToProbability[i] = mutationRate;  // This isn't a sensible Phred score
+    }
+    for (int i = 33; i <= 93 + 33; i++) {
+         lv_phredToProbability[i] = 1.0-(1.0 - pow(10.0,-1.0 * (i - 33.0) / 10.0)) * (1.0 - mutationRate);
+    }
+    for (int i = 93 + 33 + 1; i < 256; i++) {
+        lv_phredToProbability[i] = mutationRate;   // This isn't a sensible Phred score
+    }
+
+    _ASSERT(NULL == lv_perfectMatchProbability);
+    lv_perfectMatchProbability = new double[MaxReadLength+1];
+    lv_perfectMatchProbability[0] = 1.0;
+    for (unsigned i = 1; i <= MaxReadLength; i++) {
+        lv_perfectMatchProbability[i] = lv_perfectMatchProbability[i - 1] * (1 - SNP_PROB);
+    }
+
+    initializeMapqTables();
+}
+
+double *lv_phredToProbability = NULL;
+double *lv_indelProbabilities = NULL;
+double *lv_perfectMatchProbability = NULL;

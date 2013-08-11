@@ -26,49 +26,7 @@ Revision History:
 #include "Compat.h"
 #include "FASTA.h"
 
-
-namespace {
-
-_uint64 getFileSize(const char *fileName)
-{
-#ifdef _MSC_VER
-    // On Windows, use GetFileSizeEx
-    HANDLE hFile = CreateFile(fileName,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,NULL,NULL);
-
-    if (INVALID_HANDLE_VALUE == hFile) {
-        fprintf(stderr,"Unable to open FASTA file '%s', %d\n",fileName,GetLastError());
-        return NULL;
-    }
-
-    LARGE_INTEGER fileSize;
-    if (!GetFileSizeEx(hFile,&fileSize)) {
-        fprintf(stderr,"Unable to get file size of FASTA file '%s', %d\n",fileName,GetLastError());
-        CloseHandle(hFile);
-        return NULL;
-    }
-
-    CloseHandle(hFile);
-    hFile = NULL;
-    if (0 == fileSize.QuadPart) {
-        fprintf(stderr,"FASTA file '%s' appears to be empty\n",fileName);
-        return NULL;
-    }
-    return fileSize.QuadPart;
-#else
-    // On Unix, use stat
-    int fd = open(fileName, O_RDONLY);
-    _ASSERT(fd != -1);
-    struct stat sb;
-    int r = fstat(fd, &sb);
-    _ASSERT(r != -1);
-    _uint64 fileSize = sb.st_size;
-    close(fd);
-    return fileSize;
-#endif
-}
-
-}
-
+using namespace std;
 
     const Genome *
 ReadFASTAGenome(const char *fileName)
@@ -78,7 +36,7 @@ ReadFASTAGenome(const char *fileName)
     // A bound is the number of bytes in the FASTA file, because we store at most one base per
     // byte.  Get the file size to use for this bound.
     //
-    _uint64 fileSize = getFileSize(fileName);
+    _int64 fileSize = QueryFileSize(fileName);
 
     if (fileSize >> 32 != 0) {
         fprintf(stderr,"This tool only works with genomes with 2^32 bases or fewer.\n");
@@ -99,28 +57,20 @@ ReadFASTAGenome(const char *fileName)
 
     while (NULL != fgets(lineBuffer,lineBufferSize,fastaFile)) {
         if (lineBuffer[0] == '>') {
-        
-            bool found = false;
-            
-            //Add line terminator at first space
-            for (int i = 0; i < strlen(lineBuffer); ++i) {
-                if (lineBuffer[i] == ' ') {
-                    lineBuffer[i] = '\0';
-                    found = true;
-                }
-            }
-            
-            if (!found) {
-                lineBuffer[strlen(lineBuffer) - 1] = '\0';   // Remove the trailing newline from fgets
-            }
-            
+            char* space = strchr(lineBuffer, ' ');
+            char* tab = strchr(lineBuffer, '\t');
+            char* end = space !=NULL ? (tab != NULL ? min(space, tab) : space)
+                : tab != NULL ? tab : NULL;
+            // Go up to blank, or remove the trailing newline from fgets
+            end = end != NULL ? end : (lineBuffer + strlen(lineBuffer) - 1);
+            *end = '\0';
             genome->startPiece(lineBuffer+1);
         } else {
             //
             // Convert it to upper case and truncate the newline before adding it to the genome.
             //
 
-            char *newline = strchr(lineBuffer,'\n');
+            char *newline = strchr(lineBuffer, '\n');
             if (NULL != newline) {
                 *newline = 0;
             }
@@ -150,7 +100,7 @@ ReadFASTAGenome(const char *fileName)
 
 //
 // TODO: Reduce code duplication with the mutator.
-// 
+//
 bool AppendFASTAGenome(const Genome *genome, FILE *fasta, const char *prefix="")
 {
     int nPieces = genome->getNumPieces();
@@ -160,34 +110,11 @@ bool AppendFASTAGenome(const Genome *genome, FILE *fasta, const char *prefix="")
         unsigned start = piece.beginningOffset;
         unsigned end = i + 1 < nPieces ? pieces[i + 1].beginningOffset : genome->getCountOfBases();
         unsigned size = end - start;
-        unsigned amountRemaining=0;
-        const char *bases = genome->getSubstring(start, size, amountRemaining);
-        
+        const char *bases = genome->getSubstring(start, size);
+
         fprintf(fasta, ">%s%s\n", prefix, piece.name);
         fwrite(bases, 1, size, fasta);
         fputc('\n', fasta);
     }
     return !ferror(fasta);
-}
-
-    bool
-AppendFASTADiploidGenome(const DiploidGenome *diploidGenome, FILE *fasta)
-{
-	return AppendFASTAGenome(diploidGenome->getGenome(true), fasta, diploidFASTASexPrefix(false)) &&
-		AppendFASTAGenome(diploidGenome->getGenome(false), fasta, diploidFASTASexPrefix(true));			// getGenome takes isFemale, diploidFASTAPrefix isMale.
-}
-
-// 
-// TODO: Factor out this boilerplate, to take a function object.
-// 
-bool WriteFASTADiploidGenome(const DiploidGenome *diploidGenome, const char *fileName)
-{
-    FILE *file = fopen(fileName, "wb");
-    if (!file) {
-        fprintf(stderr, "Can't write FASTA file '%s'\n", fileName);
-        return false;
-    }
-    bool ok = AppendFASTADiploidGenome(diploidGenome, file);
-    fclose(file);
-    return ok;
 }

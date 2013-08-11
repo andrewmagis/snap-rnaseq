@@ -23,6 +23,7 @@ Revision History:
 #pragma once
 #include "stdafx.h"
 #include "Compat.h"
+#include "exit.h"
 
 /*++
     Simple class to handle parallelized algorithms.
@@ -50,6 +51,9 @@ public:
     // run all threads until completion, gather results in common
     void run();
 
+    // run all tasks on a separate thread
+    void fork();
+
 private:
 
     // initial & final context
@@ -59,6 +63,8 @@ private:
     TContext*   contexts;
 
     static void threadWorker(void* threadContext);
+
+    static void forkWorker(void* threadContext);
 };
 
 /*++
@@ -78,6 +84,11 @@ struct TaskContextBase
     SingleWaiterObject *doneWaiter;       // Gets notified when the last thread ends.
     volatile int        runningThreads;
     volatile int       *pRunningThreads;
+#ifdef  _MSC_VER
+    volatile int       *nThreadsAllocatingMemory;
+    EventObject        *memoryAllocationCompleteBarrier;
+    bool                useTimingBarrier;
+#endif  // _MSC_VER
 };
 
 
@@ -98,8 +109,17 @@ ParallelTask<TContext>::run()
     SingleWaiterObject doneWaiter;
     if (!CreateSingleWaiterObject(&doneWaiter)) {
         fprintf(stderr, "Failed to create single waiter object for thread completion.\n");
-        exit(1);
+        soft_exit(1);
     }
+
+#ifdef  _MSC_VER
+    int nThreadsAllocatingMemory = common->totalThreads;
+    EventObject memoryAllocationCompleteBarrier;
+    CreateEventObject(&memoryAllocationCompleteBarrier);
+
+    common->nThreadsAllocatingMemory = &nThreadsAllocatingMemory;
+    common->memoryAllocationCompleteBarrier = &memoryAllocationCompleteBarrier;
+#endif  // _MSC_VER
     common->doneWaiter = &doneWaiter;
     common->runningThreads = common->totalThreads;
     common->pRunningThreads = &common->runningThreads;
@@ -112,21 +132,50 @@ ParallelTask<TContext>::run()
 
         if (!StartNewThread(ParallelTask<TContext>::threadWorker, &contexts[i])) {
             fprintf(stderr, "Unable to start worker thread.\n");
-            exit(1);
+            soft_exit(1);
         }
     }
 
+#ifdef  _MSC_VER
+    if (common->useTimingBarrier) {
+        WaitForEvent(&memoryAllocationCompleteBarrier);
+        printf("Cleared timing barrier.\n");
+        start = timeInMillis();
+    }
+#endif  // _MSC_VER
+
     if (!WaitForSingleWaiterObject(&doneWaiter)) {
         fprintf(stderr, "Waiting for all threads to finish failed\n");
-        exit(1);
+        soft_exit(1);
     }
     DestroySingleWaiterObject(&doneWaiter);
+#ifdef  _MSC_VER
+    DestroyEventObject(&memoryAllocationCompleteBarrier);
+#endif  // _MSC_VER
 
     for (int i = 0; i < common->totalThreads; i++) {
         contexts[i].finishThread(common);
     }
 
     common->time = timeInMillis() - start;
+}
+
+    template <class TContext>
+    void
+ParallelTask<TContext>::fork()
+{
+    if (!StartNewThread(ParallelTask<TContext>::forkWorker, this)) {
+        fprintf(stderr, "Unable to fork task thread.\n");
+        soft_exit(1);
+    }
+}
+
+    template <class TContext>
+    void
+ParallelTask<TContext>::forkWorker(
+    void* forkArg)
+{
+    ((ParallelTask<TContext>*) forkArg)->run();
 }
 
     template <class TContext>
@@ -144,5 +193,5 @@ ParallelTask<TContext>::threadWorker(
     // Decrement the running thread count and wake up the waiter if it hits 0.
     if (0 == InterlockedDecrementAndReturnNewValue(context->pRunningThreads)) {
         SignalSingleWaiterObject(context->doneWaiter);
-    }
+	}
 }

@@ -36,7 +36,6 @@ public:
     // run the indexer from command line arguments
     //
     static void runIndexer(int argc, const char **argv);
-    static void runTranscriptomeIndexer(int argc, const char **argv);
 
     //
     // Build a genome index and write it to a directory.  If you don't already have a saved index
@@ -45,7 +44,7 @@ public:
     //
     static bool BuildIndexToDirectory(const Genome *genome, int seedLen, double slack,
                                       bool computeBias, const char *directory, _uint64 overflowTableFactor,
-                                      unsigned maxThreads);
+                                      unsigned maxThreads, const char *histogramFileName = NULL);
 
     bool saveToDirectory(char *directoryName);
     static GenomeIndex *loadFromDirectory(char *directoryName);
@@ -54,6 +53,8 @@ public:
 
     //
     // This looks up a seed and its reverse complement, and returns the number and list of hits for each.
+    // It guarantees that if the lookup succeeds that hits[-1] and rcHits[-1] are valid memory with 
+    // arbirtary values.
     //
     void lookupSeed(Seed seed, unsigned *nHits, const unsigned **hits, unsigned *nRCHits, const unsigned **rcHits);
 
@@ -72,8 +73,7 @@ public:
     }
 
     inline int getSeedLength() const { return seedLen; }
-    
-    GenomeIndex();
+
     ~GenomeIndex();
 
     //
@@ -145,6 +145,8 @@ private:
                     _int64 *bothComplementsUsed, _int64 *countOfDuplicateOverflows);
 
     static int BackwardsUnsignedCompare(const void *, const void *);
+
+    GenomeIndex();
 
     int seedLen;
     unsigned nHashTables;

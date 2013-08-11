@@ -24,13 +24,20 @@ Revision History:
 
 #include "stdafx.h"
 #include "WGsim.h"
+#include "exit.h"
 
 using namespace std;
 
 // Is a wgsim-generated read mapped to a given location misaligned, given the source
 // location encoded into its ID and a maximum edit distance maxK?
 // Also optionally outputs the low and high location encoded in the wgsim read's ID.
-bool wgsimReadMisaligned(Read *read, unsigned genomeLocation, GenomeIndex *index, int maxK,
+bool wgsimReadMisaligned(Read *read, unsigned location, GenomeIndex *index, int maxK,
+                         unsigned *lowOut, unsigned *highOut)
+{
+    return wgsimReadMisaligned(read, location, index->getGenome(), maxK, lowOut, highOut);
+}
+
+bool wgsimReadMisaligned(Read *read, unsigned genomeLocation, const Genome *genome, int maxK,
                          unsigned *lowOut, unsigned *highOut)
 {
     //
@@ -48,7 +55,7 @@ bool wgsimReadMisaligned(Read *read, unsigned genomeLocation, GenomeIndex *index
     char id[1024];
     if (read->getIdLength() > sizeof(id) - 1) {
       fprintf(stderr, "Got a read ID that was too long! It starts with %s\n", id);
-      exit(1);
+      soft_exit(1);
     }
     unsigned toCopy = min(read->getIdLength(), (unsigned) sizeof(id) - 1);
     strncpy(id, read->getId(), toCopy);
@@ -100,9 +107,14 @@ bool wgsimReadMisaligned(Read *read, unsigned genomeLocation, GenomeIndex *index
         return false;
     }
 
-    if (1 != sscanf(secondUnderscoreBeforeColon+1, "%d", &offset2)) {
-        fprintf(stderr,"Failed to parse read id '%s', couldn't parse offset2.\n",id);
-        return false;
+    if (underscoreBeforeColon == secondUnderscoreBeforeColon + 1) {
+        // No second offset given, since this is a single-end read; just use the first offset
+        offset2 = offset1;
+    } else {
+        if (1 != sscanf(secondUnderscoreBeforeColon+1, "%d", &offset2)) {
+            fprintf(stderr,"Failed to parse read id '%s', couldn't parse offset2.\n",id);
+            return false;
+        }
     }
     
     //
@@ -125,7 +137,7 @@ bool wgsimReadMisaligned(Read *read, unsigned genomeLocation, GenomeIndex *index
     pieceName[pieceNameLen] = '\0';
 
     unsigned offsetOfPiece;
-    if (!index->getGenome()->getOffsetOfPiece(pieceName,&offsetOfPiece)) {
+    if (!genome->getOffsetOfPiece(pieceName,&offsetOfPiece)) {
         fprintf(stderr, "Couldn't find piece name '%s' in the genome.\n",pieceName);
         return false;
     }

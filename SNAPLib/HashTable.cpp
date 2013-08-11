@@ -19,6 +19,8 @@ Environment:
 #include "stdafx.h"
 #include "HashTable.h"
 #include "BigAlloc.h"
+#include "exit.h"
+#include "Genome.h"
 
 SNAPHashTable::SNAPHashTable(
     unsigned i_tableSize,
@@ -59,18 +61,18 @@ Arguments:
 #endif
     if (NULL == table) {
         fprintf(stderr,"SNAPHashTable: Unable to allocate table of size %lld",(_int64)tableSize * elementSize);
-        exit(1);
+        soft_exit(1);
     }
 
 
     //
-    // Run through the table and set all of the value1s to 0xffffffff, which means
+    // Run through the table and set all of the value1s to InvalidGenomeLocation, which means
     // unused.
     //
 
     for (unsigned i = 0; i < tableSize; i++) {
         table[i].key = 0;
-        table[i].value1 = 0xffffffff;
+        table[i].value1 = InvalidGenomeLocation;
     }
 }
 
@@ -92,22 +94,22 @@ Arguments:
     FILE *loadFile = fopen(loadFileName,"rb");
     if (loadFile == NULL) {
         fprintf(stderr,"SNAPHashTable::SNAPHashTable(%s) fopen failed\n",loadFileName);
-        exit(1);
+        soft_exit(1);
     }
 
     if (1 != fread(&tableSize,sizeof(tableSize),1,loadFile)) {
         fprintf(stderr,"SNAPHashTable::SNAPHashTable(%s) fread table size failed\n",loadFileName);
-        exit(1);
+        soft_exit(1);
     }
 
     if (1 != fread(&bytesToCheckForUnusedEntry, sizeof(bytesToCheckForUnusedEntry),1,loadFile)) {
         fprintf(stderr,"SNAPHashTable::SNAPHashTable(%s) fread unused entry size failed\n",loadFileName);
-        exit(1);
+        soft_exit(1);
     }
 
     if (1 != fread(&usedElementCount,sizeof(usedElementCount),1,loadFile)) {
         fprintf(stderr,"SNAPHashTable::SNAPHashTable(%s) fread data size failed\n",loadFileName);
-        exit(1);
+        soft_exit(1);
 
     }
 
@@ -122,7 +124,7 @@ Arguments:
 
     if (NULL == table) {
         fprintf(stderr,"SNAPHashTable::SNAPHashTable(%s) unable to allocate table memory\n",loadFileName);
-        exit(1);
+        soft_exit(1);
     }
 
     const char *tableFileExtension = ".table";
@@ -132,7 +134,7 @@ Arguments:
     FILE* tableFile = fopen(tableFileName,"rb");
     if (tableFile == NULL) {
         fprintf(stderr,"CloseHashTable::SNAPHashTable: Unable to open table file %s, %d\n",tableFileName,errno);
-        exit(1);
+        soft_exit(1);
     }
 
     size_t maxReadSize = 100 * 1024 * 1024;
@@ -143,13 +145,13 @@ Arguments:
         size_t bytesRead = fread((char*)table + readOffset, 1, amountToRead, tableFile);
         if (bytesRead < amountToRead) {
             fprintf(stderr,"SNAPHashTable::SNAPHashTable: fread failed, %d, %lu, %lu\n",errno,bytesRead,amountToRead);
-            exit(1);
+            soft_exit(1);
         }
         // MATEI: Not sure this is needed
         /*
         if (0 == bytesRead) {
             fprintf(stderr,"SNAPHashTable::SNAPHashTable: fread read no data\n");
-            exit(1);
+            soft_exit(1);
         }
         */
         readOffset += bytesRead;
@@ -207,7 +209,7 @@ SNAPHashTable::saveToFile(const char *saveFileName)
     FILE* tableFile = fopen(tableFileName,"wb");
     if (tableFile == NULL) {
         fprintf(stderr,"CloseHashTable::saveToFile: Unable to open table file %s, %d\n",tableFileName,errno);
-        exit(1);
+        soft_exit(1);
     }
 
     size_t maxWriteSize = 100 * 1024 * 1024;
@@ -254,7 +256,7 @@ SNAPHashTable::getEntryForKey(__in unsigned key) const
     //
     // Chain through the table until we hit either a match on the key or an unused element
     //
-    while (table[tableIndex].key != key && table[tableIndex].value1 != 0xffffffff) {
+    while (table[tableIndex].key != key && table[tableIndex].value1 != InvalidGenomeLocation) {
         nProbesInGetEntryForKey++;
 
         if (nProbes < QUADRATIC_CHAINING_DEPTH) {
@@ -282,7 +284,7 @@ SNAPHashTable::getEntryForKey(__in unsigned key) const
 bool
 SNAPHashTable::Insert(unsigned key, const unsigned *data)
 {
-    _ASSERT(data[0] != 0xffffffff); // This is the unused value that represents an empty hash table.  You can't use it.
+    _ASSERT(data[0] != InvalidGenomeLocation); // This is the unused value that represents an empty hash table.  You can't use it.
 
     Entry *entry = getEntryForKey(key);
     if (NULL == entry) {
@@ -312,7 +314,7 @@ SNAPHashTable::SlowLookup(unsigned key)
 {
     Entry *entry = getEntryForKey(key);
 
-    if (NULL == entry || entry->value1 == 0xffffffff) {
+    if (NULL == entry || entry->value1 == InvalidGenomeLocation) {
         return NULL;
     }
 
