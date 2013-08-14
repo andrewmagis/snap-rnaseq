@@ -41,14 +41,16 @@ static void usage()
     fprintf(stderr,
             "Usage: snap-rna <command> [<options>]\n"
             "Commands:\n"
-            "   genome         build a genome index\n"
-            "   transcriptome  build a transcriptome index\n"
-            "   single         align single-end reads\n"
-            "   paired         align paired-end reads\n"
+            "   index         build a genome index\n"
+            "   transcriptome build a transcriptome index\n"
+            "   single        align single-end reads\n"
+            "   paired        align paired-end reads\n"
             "Type a command without arguments to see its help.\n");
             
     fprintf(stderr,
-            "TODO:\n"
+            "\nTODO:\n"
+            "0. Modify Makefile to fix g++43 to g++\n"
+            "0. Figure out way to add UINT32_MAX and UINT64_MAX (Compat.h)\n"
             "1. build transcriptome index\n"
             "2. amountRemaining for queries\n"
             "3. pairedEndAlignment struct\n"
@@ -68,12 +70,15 @@ int main(int argc, const char **argv)
         usage();
     } else if (strcmp(argv[1], "index") == 0) {
         GenomeIndex::runIndexer(argc - 2, argv + 2);
+    } else if (strcmp(argv[1], "transcriptome") == 0) {
+        fprintf(stderr, "Transcriptome index not implemented\n");
     } else if (strcmp(argv[1], "single") == 0 || strcmp(argv[1], "paired") == 0) {
         for (int i = 1; i < argc; /* i is increased below */) {
             unsigned nArgsConsumed;
             if (strcmp(argv[i], "single") == 0) {
-                SingleAlignerContext single;
-                single.runAlignment(argc - (i + 1), argv + i + 1, SNAP_VERSION, &nArgsConsumed);
+                //SingleAlignerContext single;
+                //single.runAlignment(argc - (i + 1), argv + i + 1, SNAP_VERSION, &nArgsConsumed);
+                fprintf(stderr, "Single-end alignments are not currently supported\n");
             } else if (strcmp(argv[i], "paired") == 0) {
                 PairedAlignerContext paired;
                 paired.runAlignment(argc - (i + 1), argv + i + 1, SNAP_VERSION, &nArgsConsumed);

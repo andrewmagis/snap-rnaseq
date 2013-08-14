@@ -141,7 +141,7 @@ SingleAlignerContext::runIterationThread()
         Read *read;
         while (NULL != (read = supplier->getNextRead())) {
             stats->totalReads++;
-            writeRead(read, NotFound, InvalidGenomeLocation, FORWARD, 0, 0);
+            writeRead(read, NotFound, InvalidGenomeLocation, FORWARD, false, 0, 0, 0);
         }
         delete supplier;
         return;
@@ -188,7 +188,7 @@ SingleAlignerContext::runIterationThread()
         // Skip the read if it has too many Ns or trailing 2 quality scores.
         if (read->getDataLength() < 50 || read->countOfNs() > maxDist) {
             if (readWriter != NULL && options->passFilter(read, NotFound)) {
-                readWriter->writeRead(read, NotFound, 0, InvalidGenomeLocation, false);
+                readWriter->writeRead(read, NotFound, 0, InvalidGenomeLocation, false, false, 0);
             }
             continue;
         } else {
@@ -199,6 +199,12 @@ SingleAlignerContext::runIterationThread()
         Direction direction;
         int score;
         int mapq;
+        
+        fprintf(stderr, "Need to finish this part, set transcriptome and flag\n");
+        
+        //Set transcriptome and flag here
+        bool isTranscriptome = false;
+        char flag = 0;
 
         AlignmentResult result = aligner->AlignRead(read, &location, &direction, &score, &mapq);
 
@@ -209,7 +215,7 @@ SingleAlignerContext::runIterationThread()
             wasError = wgsimReadMisaligned(read, location, index, options->misalignThreshold);
         }
 
-        writeRead(read, result, location, direction, score, mapq);
+        writeRead(read, result, location, direction, isTranscriptome, flag, score, mapq);
         
         updateStats(stats, read, result, location, score, mapq, wasError);
     }
@@ -229,11 +235,13 @@ SingleAlignerContext::writeRead(
     AlignmentResult result,
     unsigned location,
     Direction direction,
+    bool isTranscriptome,
+    char flag,
     int score,
     int mapq)
 {
     if (readWriter != NULL && options->passFilter(read, result)) {
-        readWriter->writeRead(read, result, mapq, location, direction);
+        readWriter->writeRead(read, result, mapq, location, direction, isTranscriptome, flag);
     }
 }
 

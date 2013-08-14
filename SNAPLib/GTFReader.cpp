@@ -18,17 +18,13 @@ Revision History:
 
 --*/
 
-//Source includes
-#include "GTFReader.h"
-
-
-/*
 //System includes
 #include <stdio.h>
-#include <stdlib.h>
 #include <sys/time.h>
-#include <sstream>
+#include <string.h>
 
+//Source includes
+#include "GTFReader.h"
 #include "Compat.h"
 
 bool IntervalNodeSort(const Interval<ReadInterval*> &interval0, const Interval<ReadInterval*> &interval1) { 
@@ -882,11 +878,11 @@ void GTFTranscript::WriteFASTA(const Genome *genome, std::ofstream &outfile) con
     for (feature_list::const_iterator it = exons.begin(); it != exons.end(); ++it) {
     
         //Get the sequence of this feature from the genome
-        const char* seq = genome->getSubstring((*it)->start+offset-1,  (*it)->Length(), amountExceeded);
+        const char* seq = genome->getSubstring((*it)->start+offset-1,  (*it)->Length());
         
         if (seq == NULL) {
             printf("Warning: transcript %s exceeds boundaries of chromosome %s. Truncating\n", transcript_id.c_str(), chr.c_str());
-            const char* seq = genome->getSubstring((*it)->start+offset-1, (*it)->Length()-amountExceeded, amountExceeded);
+            //const char* seq = genome->getSubstring((*it)->start+offset-1, (*it)->Length()-amountExceeded, amountExceeded);
             exit(1);
         }
         
@@ -1441,27 +1437,6 @@ void GTFReader::PrintGeneAssociations() {
     
 }
 
-void GTFReader::Test() {
-
-    
-    GTFTranscript &transcript = GetTranscript("ENST00000489673");
-
-    std::vector<junction> junctions = transcript.Junctions(1, 200);
-    
-    for (std::vector<junction>::iterator it = junctions.begin(); it != junctions.end(); ++it) {
-        printf("[%d %d]\n", it->first, it->second);
-    }
-    
-    std::vector<GTFGene> results;
-    IntervalGenes("22", 42290565, 42359490, results);
-    printf("Size: %d\n", results.size());
-    for (std::vector<GTFGene>::iterator it = results.begin(); it != results.end(); ++it) {
-        it->Print();
-    }
-
-
-}
-
 void GTFReader::BuildTranscriptome(const Genome *genome) {
 
     printf("Building transcriptome FASTA file... ");
@@ -1490,7 +1465,6 @@ void GTFReader::BuildTranscriptome(const Genome *genome) {
     printf("%llds.\n", loadTime / 1000);
 
 }
-*/
 
 /*
 int main(int argc, char *argv[]) {
@@ -1534,71 +1508,25 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "Time elapsed: %.3lf seconds\n", elapsedTime / 1000.0);
     return 0;
 }
-
 */
 
 /*
-void GTFReader::AddCircRNA(string gene, bool isSpliced, const char* id, unsigned length) {
+void GTFReader::Test() {
 
-     //Try to find this key in the graph
-    circ_graph::iterator pos = circ.find(gene);
     
-    //Create a string for this read id
-    string read_id(id, length);
-        
-    //If this sequence is not found, create a new vector to store this sequence (and others like it)
-    std::pair<circ_graph::iterator,bool> ret;
-    if ((pos == circ.end())) {
-        ret = circ.insert(circ_graph::value_type(gene, gene));
-        
-        if (isSpliced) {
-            ret.first->second.IncrementSplicedCount();
-            ret.first->second.AddSplicedReadID(read_id);
-        } else {
-            ret.first->second.IncrementPairedCount();
-            ret.first->second.AddPairedReadID(read_id);
-        }
-        
-    //Otherwise, add this feature to the transcript
-    } else {
-        if (isSpliced) {
-            pos->second.IncrementSplicedCount();
-            pos->second.AddSplicedReadID(read_id);
-        } else {
-            pos->second.IncrementPairedCount();
-            pos->second.AddPairedReadID(read_id);
-        }
-    }   
+    const GTFTranscript &transcript = GetTranscript("ENST00000489673");
 
-}*/
-
-/*
-GTFFeature::GTFFeature(string line) {
-
-    char _chr[GTF_MAX_READ_SIZE];
-    char _source[GTF_MAX_READ_SIZE];
-    char _feature[GTF_MAX_READ_SIZE];
-    unsigned _start;
-    unsigned _end;
-    char _score[GTF_MAX_READ_SIZE];
-    char _strand;
-    char _frame;
-    char _gene_id[GTF_MAX_READ_SIZE];
-    char _transcript_id[GTF_MAX_READ_SIZE];
+    std::vector<junction> junctions = transcript.Junctions(1, 200);
     
-    //Tried stringstream - it is horrible, not thread safe, incredibly slow in a multithreaded application
-    sscanf(line.c_str(), "%s\t%s\t%s\t%u\t%u\t%s\t%c\t%c\t%*[^\"]\"%255[^\"]\"%*[^\"]\"%255[^\"]\"", _chr, _source, _feature, &_start, &_end, _score, &_strand, &_frame, &_gene_id, &_transcript_id);
-        
-    chr = _chr;
-    source = _source;
-    feature = _feature;
-    start = _start;
-    end = _end;
-    score = _score;
-    strand = _strand;
-    frame = _frame;
-    gene_id = _gene_id;
-    transcript_id = _transcript_id;
+    for (std::vector<junction>::iterator it = junctions.begin(); it != junctions.end(); ++it) {
+        printf("[%d %d]\n", it->first, it->second);
+    }
     
+    std::vector<GTFGene> results;
+    IntervalGenes("22", 42290565, 42359490, results);
+    printf("Size: %d\n", results.size());
+    for (std::vector<GTFGene>::iterator it = results.begin(); it != results.end(); ++it) {
+        it->Print();
+    }
 }
 */

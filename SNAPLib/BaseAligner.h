@@ -33,8 +33,10 @@ Revision History:
 #include "ProbabilityDistance.h"
 #include "AlignerStats.h"
 #include "directions.h"
+#include <map>
+#include <set>
 
-
+typedef std::map<unsigned, std::set<unsigned> > seed_map;
 
 class BaseAligner: public Aligner {
 public:
@@ -77,6 +79,15 @@ public:
         unsigned     searchRadius,       // If non-zero, constrain search around searchLocation in direction searchRC.
         unsigned     searchLocation,
         Direction    searchDirection);
+        
+        AlignmentResult
+    CharacterizeSeeds(
+        Read        *read, 
+        unsigned    searchRadius, 
+        unsigned    searchLocation, 
+        bool        searchRC, 
+        seed_map    &map, 
+        seed_map    &mapRC);
         
     //
     // Statistics gathering.

@@ -34,6 +34,7 @@ Revision History:
 class FileFormat;
 
 class Genome;
+class GTFReader;
 
 struct PairedAlignmentResult;
 
@@ -41,9 +42,9 @@ enum AlignmentResult {NotFound, SingleHit, MultipleHits, UnknownAlignment}; // B
 
 bool isAValidAlignmentResult(AlignmentResult result);
 // constant for small/medium/large reads
-//#define MAX_READ_LENGTH 300
+#define MAX_READ_LENGTH 300
 //#define MAX_READ_LENGTH 1000
-#define MAX_READ_LENGTH 20000
+//#define MAX_READ_LENGTH 20000
 
 //
 // Here's a brief description of the classes for input in SNAP:
@@ -86,6 +87,8 @@ enum ReadClippingType {NoClipping, ClipFront, ClipBack, ClipFrontAndBack};
 struct ReaderContext
 {
     const Genome*       genome;
+    const Genome*       transcriptome;
+    GTFReader*          gtf;
     const char*         defaultReadGroup;
     ReadClippingType    clipping;
     bool                paired;
@@ -165,7 +168,7 @@ public:
     virtual bool writeHeader(const ReaderContext& context, bool sorted, int argc, const char **argv, const char *version, const char *rgLine) = 0;
 
     // write a single read, return true if successful
-    virtual bool writeRead(Read *read, AlignmentResult result, int mapQuality, unsigned genomeLocation, Direction direction) = 0;
+    virtual bool writeRead(Read *read, AlignmentResult result, int mapQuality, unsigned genomeLocation, Direction direction, bool isTranscriptome, char flag) = 0;
 
     // write a pair of reads, return true if successful
     virtual bool writePair(Read *read0, Read *read1, PairedAlignmentResult *result) = 0;
@@ -184,7 +187,7 @@ public:
     virtual void close() = 0;
 
     static ReadWriterSupplier* create(const FileFormat* format, DataWriterSupplier* dataSupplier,
-        const Genome* genome);
+        const Genome* genome, const Genome* transcriptome, const GTFReader* gtf);
 };
 
 #define READ_GROUP_FROM_AUX     ((const char*) -1)

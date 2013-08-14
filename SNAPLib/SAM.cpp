@@ -30,6 +30,7 @@ Environment:
 #include "AlignerOptions.h"
 #include "directions.h"
 #include "exit.h"
+#include <vector>
 
 using std::max;
 using std::min;
@@ -601,24 +602,26 @@ public:
     
     virtual void getSortInfo(const Genome* genome, char* buffer, _int64 bytes, unsigned* o_location, unsigned* o_readBytes, int* o_refID, int* o_pos) const;
 
-    virtual ReadWriterSupplier* getWriterSupplier(AlignerOptions* options, const Genome* genome) const;
+    virtual ReadWriterSupplier* getWriterSupplier(AlignerOptions* options, const Genome* genome, const Genome* transcriptome, const GTFReader *gtf) const;
 
     virtual bool writeHeader(
         const ReaderContext& context, char *header, size_t headerBufferSize, size_t *headerActualSize,
         bool sorted, int argc, const char **argv, const char *version, const char *rgLine) const;
 
     virtual bool writeRead(
-        const Genome * genome, LandauVishkinWithCigar * lv, char * buffer, size_t bufferSpace, 
+        const Genome * genome, const Genome * transcriptome, const GTFReader * gtf,
+        LandauVishkinWithCigar * lv, char * buffer, size_t bufferSpace, 
         size_t * spaceUsed, size_t qnameLen, Read * read, AlignmentResult result, 
-        int mapQuality, unsigned genomeLocation, Direction direction,
+        int mapQuality, unsigned genomeLocation, Direction direction, bool isTranscriptome = false, char flag = 0,
         bool hasMate = false, bool firstInPair = false, Read * mate = NULL, 
-        AlignmentResult mateResult = NotFound, unsigned mateLocation = 0, Direction mateDirection = FORWARD) const; 
+        AlignmentResult mateResult = NotFound, unsigned mateLocation = 0, Direction mateDirection = FORWARD,
+        bool mateIsTranscriptome = false, char mateFlag = 0) const; 
 
 private:
     static const char * computeCigarString(const Genome * genome, LandauVishkinWithCigar * lv,
         char * cigarBuf, int cigarBufLen, char * cigarBufWithClipping, int cigarBufWithClippingLen,
         const char * data, unsigned dataLength, unsigned basesClippedBefore, unsigned basesClippedAfter,
-        unsigned genomeLocation, Direction direction, bool useM, int * editDistance);
+        unsigned genomeLocation, Direction direction, bool useM, int * editDistance, std::vector<unsigned> &tokens);
 
     const bool useM;
 };
@@ -684,7 +687,9 @@ SAMFormat::getSortInfo(
     ReadWriterSupplier*
 SAMFormat::getWriterSupplier(
     AlignerOptions* options,
-    const Genome* genome) const
+    const Genome* genome, 
+    const Genome* transcriptome,
+    const GTFReader* gtf) const
 {
     DataWriterSupplier* dataSupplier;
     if (options->sortOutput) {
@@ -698,7 +703,7 @@ SAMFormat::getWriterSupplier(
     } else {
         dataSupplier = DataWriterSupplier::create(options->outputFileTemplate);
     }
-    return ReadWriterSupplier::create(this, dataSupplier, genome);
+    return ReadWriterSupplier::create(this, dataSupplier, genome, transcriptome, gtf);
 }
 
     bool
@@ -798,6 +803,8 @@ SAMFormat::writeHeader(
     bool
 getSAMData(
     const Genome * genome,
+    const Genome * transcriptome,
+    const GTFReader * gtf,
     LandauVishkinWithCigar * lv,
     // output data
     char* data,
@@ -823,13 +830,15 @@ getSAMData(
     AlignmentResult result, 
     unsigned genomeLocation,
     Direction direction,
+    bool isTranscriptome,
     bool useM,
     bool hasMate,
     bool firstInPair,
     Read * mate, 
     AlignmentResult mateResult,
     unsigned mateLocation,
-    Direction mateDirection)
+    Direction mateDirection,
+    bool mateIsTranscriptome)
 {
     pieceName = "*";
     positionInPiece = 0;
@@ -839,7 +848,7 @@ getSAMData(
     if (0 == qnameLen) {
          qnameLen = read->getIdLength();
     }
-
+    
     //
     // If the aligner said it didn't find anything, treat it as such.  Sometimes it will emit the
     // best match that it found, even if it's not within the maximum edit distance limit (but will
@@ -889,10 +898,33 @@ getSAMData(
         if (direction == RC) {
             flags |= SAM_REVERSE_COMPLEMENT;
         }
-        const Genome::Piece *piece = genome->getPieceAtLocation(genomeLocation);
-        pieceName = piece->name;
-        pieceIndex = (int)(piece - genome->getPieces());
-        positionInPiece = genomeLocation - piece->beginningOffset + 1; // SAM is 1-based
+        
+        //Here we check to see if read is transcriptome or genome
+        if (!isTranscriptome) {
+
+            const Genome::Piece *piece = genome->getPieceAtLocation(genomeLocation);
+            pieceName = piece->name;
+            pieceIndex = (int)(piece - genome->getPieces());
+            positionInPiece = genomeLocation - piece->beginningOffset + 1; // SAM is 1-based
+        
+        } else {
+        
+            const Genome::Piece *piece = transcriptome->getPieceAtLocation(genomeLocation);
+            pieceName = piece->name;            
+            positionInPiece = genomeLocation - piece->beginningOffset + 1; // SAM is 1-based
+            
+            //Get pieceIndex for genome
+            unsigned offset;
+            genome->getOffsetOfPiece(pieceName, &offset);
+            const Genome::Piece *genome_piece = genome->getPieceAtLocation(offset);
+            pieceIndex = (int)(genome_piece - genome->getPieces());
+        
+            //Must convert to genomic coordinates
+            positionInPiece = gtf->GetTranscript(pieceName).GenomicPosition(positionInPiece, 0);
+            pieceName = gtf->GetTranscript(pieceName).Chr().c_str();
+                  
+        }
+                
         mapQuality = max(0, min(70, mapQuality));
     } else {
         flags |= SAM_UNMAPPED;
@@ -903,10 +935,32 @@ getSAMData(
         flags |= SAM_MULTI_SEGMENT;
         flags |= (firstInPair ? SAM_FIRST_SEGMENT : SAM_LAST_SEGMENT);
         if (mateLocation != InvalidGenomeLocation) {
-            const Genome::Piece *matePiece = genome->getPieceAtLocation(mateLocation);
-            matePieceName = matePiece->name;
-            matePieceIndex = (int)(matePiece - genome->getPieces());
-            matePositionInPiece = mateLocation - matePiece->beginningOffset + 1;
+        
+            //Here we check to see if mate is transcriptome or genome
+            if (!mateIsTranscriptome) {
+            
+                const Genome::Piece *matePiece = genome->getPieceAtLocation(mateLocation);
+                matePieceName = matePiece->name;
+                matePieceIndex = (int)(matePiece - genome->getPieces());
+                matePositionInPiece = mateLocation - matePiece->beginningOffset + 1;
+                
+            } else {
+            
+                const Genome::Piece *matePiece = transcriptome->getPieceAtLocation(mateLocation);
+                matePieceName = matePiece->name;
+                matePositionInPiece = mateLocation - matePiece->beginningOffset + 1;
+            
+                //Get pieceIndex for genome
+                unsigned offset;
+                genome->getOffsetOfPiece(matePieceName, &offset);
+                const Genome::Piece *genome_piece = genome->getPieceAtLocation(offset);
+                matePieceIndex = (int)(genome_piece - genome->getPieces());
+            
+                //Must convert to genomic coordinates
+                matePositionInPiece = gtf->GetTranscript(matePieceName).GenomicPosition(matePositionInPiece, 0);
+                matePieceName = gtf->GetTranscript(matePieceName).Chr().c_str();
+            
+            }
 
             if (mateDirection == RC) {
                 flags |= SAM_NEXT_REVERSED;
@@ -963,6 +1017,8 @@ getSAMData(
     bool
 SAMFormat::writeRead(
     const Genome * genome,
+    const Genome * transcriptome,
+    const GTFReader *gtf,
     LandauVishkinWithCigar * lv,
     char * buffer,
     size_t bufferSpace, 
@@ -973,16 +1029,21 @@ SAMFormat::writeRead(
     int mapQuality,
     unsigned genomeLocation,
     Direction direction,
+    bool isTranscriptome,
+    char flag,
     bool hasMate,
     bool firstInPair,
     Read * mate, 
     AlignmentResult mateResult,
     unsigned mateLocation,
-    Direction mateDirection) const
+    Direction mateDirection,
+    bool mateIsTranscriptome,
+    char mateFlag) const
 {
     const int MAX_READ = MAX_READ_LENGTH;
     const int cigarBufSize = MAX_READ * 2;
     char cigarBuf[cigarBufSize];
+    char cigarNew[cigarBufSize];
 
     const int cigarBufWithClippingSize = MAX_READ * 2 + 32;
     char cigarBufWithClipping[cigarBufWithClippingSize];
@@ -1006,19 +1067,44 @@ SAMFormat::writeRead(
     unsigned basesClippedBefore;
     unsigned basesClippedAfter;
     int editDistance = -1;
-
-    if (! getSAMData(genome, lv, data, quality, MAX_READ, pieceName, pieceIndex, 
+    
+    if (! getSAMData(genome, transcriptome, gtf, lv, data, quality, MAX_READ, pieceName, pieceIndex, 
         flags, positionInPiece, mapQuality, matePieceName, matePieceIndex, matePositionInPiece, templateLength,
         fullLength, clippedData, clippedLength, basesClippedBefore, basesClippedAfter,
-        qnameLen, read, result, genomeLocation, direction, useM,
-        hasMate, firstInPair, mate, mateResult, mateLocation, mateDirection))
+        qnameLen, read, result, genomeLocation, direction, isTranscriptome, useM,
+        hasMate, firstInPair, mate, mateResult, mateLocation, mateDirection, mateIsTranscriptome))
     {
         return false;
     }
+    
     if (genomeLocation != InvalidGenomeLocation) {
-        cigar = computeCigarString(genome, lv, cigarBuf, cigarBufSize, cigarBufWithClipping, cigarBufWithClippingSize, 
-                                   clippedData, clippedLength, basesClippedBefore, basesClippedAfter,
-                                   genomeLocation, direction, useM, &editDistance);
+    
+        std::vector<unsigned> tokens;
+        if (!isTranscriptome) {
+    
+            cigar = computeCigarString(genome, lv, cigarBuf, cigarBufSize, cigarBufWithClipping, cigarBufWithClippingSize, 
+                                       clippedData, clippedLength, basesClippedBefore, basesClippedAfter,
+                                       genomeLocation, direction, useM, &editDistance, tokens);
+                                       
+        } else {
+        
+            //Vector of tokens from CIGAR string for Transcriptome conversion
+            cigar = computeCigarString(transcriptome, lv, cigarNew, cigarBufSize, cigarBufWithClipping, cigarBufWithClippingSize, 
+                                       clippedData, clippedLength, basesClippedBefore, basesClippedAfter,
+                                       genomeLocation, direction, useM, &editDistance, tokens);
+                          
+            //We need the pieceName for conversion             
+            const Genome::Piece *transcriptomePiece = transcriptome->getPieceAtLocation(genomeLocation);
+            const char* transcriptomePieceName = transcriptomePiece->name;
+            unsigned transcriptomePositionInPiece = genomeLocation - transcriptomePiece->beginningOffset + 1; // SAM is 1-based
+                                       
+            //Insert splice junction
+            //cigar = convertTranscriptomeToGenome(gtf, tokens, transcriptomePieceName, transcriptomePositionInPiece, cigarBufWithClipping, cigarBufWithClippingSize);
+            lv->insertSpliceJunctions(gtf, tokens, transcriptomePieceName, transcriptomePositionInPiece, (char*) cigarBuf, cigarBufSize);
+            cigar = cigarBuf;
+            
+        }
+         
     }
 
     // Write the SAM entry, which requires the following fields:
@@ -1125,7 +1211,8 @@ SAMFormat::computeCigarString(
     unsigned                    genomeLocation,
     Direction                   direction,
 	bool						useM,
-    int *                       editDistance
+    int *                       editDistance,
+    std::vector<unsigned>       &tokens
 )
 {
     const char *reference = genome->getSubstring(genomeLocation, dataLength);
@@ -1138,7 +1225,8 @@ SAMFormat::computeCigarString(
                             MAX_K - 1,
                             cigarBuf,
                             cigarBufLen,
-						    useM);
+						    useM,
+						    tokens);
     } else {
         //
         // Fell off the end of the chromosome.

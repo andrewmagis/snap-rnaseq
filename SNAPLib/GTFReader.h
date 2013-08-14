@@ -18,7 +18,6 @@ Revision History:
 
 --*/
 
-/*
 #pragma once
 
 //System includes
@@ -372,5 +371,4 @@ inline std::string ToString(const unsigned& arg)
   return std::string(buffer);
 }
 
-*/
 

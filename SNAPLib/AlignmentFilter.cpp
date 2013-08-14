@@ -21,8 +21,6 @@ Revision History:
 
 #include "AlignmentFilter.h"
 
-/*
-
 Alignment::Alignment(unsigned location_, bool isRC_, int score_, string rname_, unsigned pos_, unsigned pos_end_, unsigned pos_original_, string transcript_id_, string gene_id_, bool isTranscriptome_) 
     : location(location_), isRC(isRC_), score(score_), rname(rname_), pos(pos_), pos_end(pos_end_), pos_original(pos_original_), transcript_id(transcript_id_), gene_id(gene_id_), isTranscriptome(isTranscriptome_)
 {
@@ -101,7 +99,7 @@ void AlignmentPair::Print() {
     printf("\n");
 }
 
-AlignmentFilter::AlignmentFilter(Read *read0_, Read *read1_, const Genome* genome_, const Genome* transcriptome_, GTFReader* gtf_, unsigned minSpacing_, unsigned maxSpacing_, unsigned confDiff_, unsigned maxDist_, unsigned seedLen_, SpecialAligner *specialAligner_) 
+AlignmentFilter::AlignmentFilter(Read *read0_, Read *read1_, const Genome* genome_, const Genome* transcriptome_, GTFReader* gtf_, unsigned minSpacing_, unsigned maxSpacing_, unsigned confDiff_, unsigned maxDist_, unsigned seedLen_, BaseAligner *specialAligner_) 
     : read0(read0_), read1(read1_), genome(genome_), transcriptome(transcriptome_), gtf(gtf_), minSpacing(minSpacing_), maxSpacing(maxSpacing_), confDiff(confDiff_), maxDist(maxDist_), seedLen(seedLen_), specialAligner(specialAligner_)
 {}
 
@@ -211,16 +209,17 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
     std::vector<AlignmentPair> intragene_pairs;
     std::vector<AlignmentPair> intrachromosomal_pairs;
     std::vector<AlignmentPair> interchromosomal_pairs;
-    
-    
-//     printf("Align1\n");
-//     for (alignment_map::iterator m0 = mate0.begin(); m0 != mate0.end(); ++m0) {
-//         m0->second.Print();
-//     }
-//     printf("Align2\n");
-//     for (alignment_map::iterator m1 = mate1.begin(); m1 != mate1.end(); ++m1) {
-//         m1->second.Print();
-//     }
+        
+    /*
+    printf("Align1\n");
+    for (alignment_map::iterator m0 = mate0.begin(); m0 != mate0.end(); ++m0) {
+        m0->second.Print();
+    }
+    printf("Align2\n");
+    for (alignment_map::iterator m1 = mate1.begin(); m1 != mate1.end(); ++m1) {
+        m1->second.Print();
+    }
+    */
     
     char flag = 0;
     unsigned best_score = 10000;
@@ -237,13 +236,13 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
     } else if (mate0.size() == 0) {
         
         flag |= 1 << FIRST_NOT_ALIGNED;
-        UnalignedRead(read1, seedLen);
+        //UnalignedRead(read1, seedLen);
     
     //If there are no alignments for mate1
     } else if (mate1.size() == 0) {
     
         flag |= 1 << SECOND_NOT_ALIGNED;
-        UnalignedRead(read0, seedLen);    
+        //UnalignedRead(read0, seedLen);    
     }
     
     //Iterate through all mate0;
@@ -402,25 +401,27 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
         }
     }
     
-//     printf("No RC Pairs: %u\n", no_rc.size());
-//     for (vector<AlignmentPair>::iterator it = no_rc.begin(); it != no_rc.end(); ++it) {
-//         it->Print();
-//     }
-//     
-//     printf("Same Gene Pairs: %u\n", intragene_pairs.size());
-//     for (vector<AlignmentPair>::iterator it = intragene_pairs.begin(); it != intragene_pairs.end(); ++it) {
-//         it->Print();
-//     }
-// 
-//     printf("Same Chr Pairs\n");
-//     for (vector<AlignmentPair>::iterator it = intrachromosomal_pairs.begin(); it != intrachromosomal_pairs.end(); ++it) {
-//         it->Print();
-//     }
-//     
-//     printf("Diff Chr Pairs\n");
-//     for (vector<AlignmentPair>::iterator it = interchromosomal_pairs.begin(); it != interchromosomal_pairs.end(); ++it) {
-//         it->Print();
-//     }
+    /*
+    printf("No RC Pairs: %u\n", no_rc.size());
+    for (vector<AlignmentPair>::iterator it = no_rc.begin(); it != no_rc.end(); ++it) {
+        it->Print();
+    }
+    
+    printf("Same Gene Pairs: %u\n", intragene_pairs.size());
+    for (vector<AlignmentPair>::iterator it = intragene_pairs.begin(); it != intragene_pairs.end(); ++it) {
+        it->Print();
+    }
+
+    printf("Same Chr Pairs\n");
+    for (vector<AlignmentPair>::iterator it = intrachromosomal_pairs.begin(); it != intrachromosomal_pairs.end(); ++it) {
+        it->Print();
+    }
+    
+    printf("Diff Chr Pairs\n");
+    for (vector<AlignmentPair>::iterator it = interchromosomal_pairs.begin(); it != interchromosomal_pairs.end(); ++it) {
+        it->Print();
+    }
+    */
 
     //Gene pairs always get priority.  If there is a paired end alignment
     if (intragene_pairs.size() > 0) {
@@ -429,7 +430,7 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
         ProcessPairs(result, intragene_pairs);
         
         //Here we check for negative reads which indicate circular RNAs
-        if (result->status[0] == CertainHit) {
+        if (result->status[0] == SingleHit) {
         
             
             //This is not working very well
@@ -469,7 +470,7 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
         ProcessPairs(result, intrachromosomal_pairs);
     
         //If this is a good hit, check to make sure there is no RC hit that is better
-        if (result->status[0] == CertainHit) {
+        if (result->status[0] == SingleHit) {
             CheckNoRC(result, no_rc);
         }
         
@@ -479,12 +480,12 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
         }
        
         //If this is still a good hit, check to make sure there is no partial hit that is better
-        if (result->status[0] == CertainHit) { 
+        if (result->status[0] == SingleHit) { 
             FindPartialMatches(result, intrachromosomal_pairs[0]);
         }
         
         //If this is still a good hit, add this in as a chr link
-        if (result->status[0] == CertainHit) {
+        if (result->status[0] == SingleHit) {
             //Link these positions in the GTF object
             gtf->IntrachromosomalPair(intrachromosomal_pairs[0].align1->rname, intrachromosomal_pairs[0].align1->pos, intrachromosomal_pairs[0].align1->pos_end,
                                       intrachromosomal_pairs[0].align2->rname, intrachromosomal_pairs[0].align2->pos, intrachromosomal_pairs[0].align2->pos_end, 
@@ -500,17 +501,17 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
         ProcessPairs(result, interchromosomal_pairs);
         
         //If this is a good hit, check to make sure there is no RC hit that is better
-        if (result->status[0] == CertainHit) {
+        if (result->status[0] == SingleHit) {
             CheckNoRC(result, no_rc);
         }
        
         //If this is still a good hit, check to make sure there is no partial hit that is better
-        if (result->status[0] == CertainHit) { 
+        if (result->status[0] == SingleHit) { 
             FindPartialMatches(result, interchromosomal_pairs[0]);
         }
         
         //If this is still a good hit, add this in as a gene link
-        if (result->status[0] == CertainHit) {
+        if (result->status[0] == SingleHit) {
             //Link these positions in the GTF object
             gtf->InterchromosomalPair(interchromosomal_pairs[0].align1->rname, interchromosomal_pairs[0].align1->pos, interchromosomal_pairs[0].align1->pos_end,
                                       interchromosomal_pairs[0].align2->rname, interchromosomal_pairs[0].align2->pos, interchromosomal_pairs[0].align2->pos_end, 
@@ -526,14 +527,14 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
     result->flag[0] = 0;
     result->status[0] = NotFound;
     result->location[0] = 0;
-    result->isRC[0] = 0;
+    result->direction[0] = FORWARD;
     result->score[0] = 0;
     result->isTranscriptome[0] = false;
     
     result->flag[1] = 0;
     result->status[1] = NotFound;  
     result->location[1] = 0;
-    result->isRC[1] = 0;
+    result->direction[1] = FORWARD;
     result->score[1] = 0;
     result->isTranscriptome[1] = false;
     return 0;    
@@ -907,16 +908,16 @@ void AlignmentFilter::ProcessPairs(PairedAlignmentResult* result, std::vector<Al
     if (pairs.size() == 1) {
            
         //Unique high quality hit
-        result->status[0] = CertainHit;
+        result->status[0] = SingleHit;
         result->location[0] = pairs[0].align1->location;
-        result->isRC[0] = pairs[0].align1->isRC;
+        result->direction[0] = pairs[0].align1->isRC;
         result->score[0] = pairs[0].align1->score;
         result->isTranscriptome[0] = pairs[0].align1->isTranscriptome;
         result->flag[0] = pairs[0].flag;
         
-        result->status[1] = CertainHit;
+        result->status[1] = SingleHit;
         result->location[1] = pairs[0].align2->location;
-        result->isRC[1] = pairs[0].align2->isRC;
+        result->direction[1] = pairs[0].align2->isRC;
         result->score[1] = pairs[0].align2->score;
         result->isTranscriptome[1] = pairs[0].align2->isTranscriptome;
         result->flag[1] = pairs[0].flag;
@@ -927,13 +928,13 @@ void AlignmentFilter::ProcessPairs(PairedAlignmentResult* result, std::vector<Al
         sort(pairs.begin(), pairs.end());
                          
         result->location[0] = pairs[0].align1->location;
-        result->isRC[0] = pairs[0].align1->isRC;
+        result->direction[0] = pairs[0].align1->isRC;
         result->score[0] = pairs[0].align1->score;
         result->isTranscriptome[0] = pairs[0].align1->isTranscriptome;
         result->flag[0] = pairs[0].flag;
         
         result->location[1] = pairs[0].align2->location;
-        result->isRC[1] = pairs[0].align2->isRC;
+        result->direction[1] = pairs[0].align2->isRC;
         result->score[1] = pairs[0].align2->score;
         result->isTranscriptome[1] = pairs[0].align2->isTranscriptome;
         result->flag[1] = pairs[0].flag;
@@ -944,8 +945,8 @@ void AlignmentFilter::ProcessPairs(PairedAlignmentResult* result, std::vector<Al
         if (diff >= confDiff) {
         
             //Unique high quality hit
-            result->status[0] = CertainHit;
-            result->status[1] = CertainHit;   
+            result->status[0] = SingleHit;
+            result->status[1] = SingleHit;   
         
         } else {
 
@@ -990,4 +991,4 @@ void AlignmentFilter::PrintMaps(seed_map &map, seed_map &mapRC) {
         
     }
 }
-*/
+

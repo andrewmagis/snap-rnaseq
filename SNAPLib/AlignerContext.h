@@ -30,6 +30,7 @@ Revision History:
 #include "AlignerOptions.h"
 #include "AlignerStats.h"
 #include "ParallelTask.h"
+#include "GTFReader.h"
 
 class AlignerExtension;
 
@@ -92,6 +93,8 @@ public:
  
     // common state across all threads
     GenomeIndex                         *index;
+    GenomeIndex                         *transcriptome;
+    GTFReader                           *gtf;
     ReadWriterSupplier                  *writerSupplier;
     ReaderContext                        readerContext;
     _int64                               alignStart;

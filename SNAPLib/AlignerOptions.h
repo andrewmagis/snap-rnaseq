@@ -59,6 +59,8 @@ struct AlignerOptions : public AbstractOptions
 
     const char         *commandLine;
     const char         *indexDir;
+    const char         *transcriptomeDir;
+    const char         *annotation;
     const char         *similarityMapFile;
     int                 numThreads;
     Range               maxDist;
@@ -91,6 +93,11 @@ struct AlignerOptions : public AbstractOptions
     bool                useTimingBarrier;
     unsigned            extraSearchDepth;
     const char         *defaultReadGroup; // if not specified in input
+
+    //Quality filtering options
+    float minPercentAbovePhred;
+    unsigned minPhred;
+    unsigned phredOffset;
 
     void usage();
 

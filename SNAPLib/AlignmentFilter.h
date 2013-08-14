@@ -19,8 +19,6 @@ Revision History:
 
 --*/
 
-/*
-
 #pragma once
 
 //System includes
@@ -32,7 +30,7 @@ Revision History:
 #include <algorithm>
 
 #include "PairedEndAligner.h"
-#include "SpecialAligner.h"
+#include "BaseAligner.h"
 #include "Genome.h"
 #include "GTFReader.h"
 
@@ -99,7 +97,7 @@ class AlignmentFilter {
     public:
     
         //Constructors/destructor
-        AlignmentFilter(Read *read0_, Read *read1_, const Genome* genome_, const Genome* transcriptome_, GTFReader* gtf_, unsigned minSpacing_, unsigned maxSpacing_, unsigned confDiff_, unsigned maxDist_, unsigned seedLen_, SpecialAligner *specialAligner);
+        AlignmentFilter(Read *read0_, Read *read1_, const Genome* genome_, const Genome* transcriptome_, GTFReader* gtf_, unsigned minSpacing_, unsigned maxSpacing_, unsigned confDiff_, unsigned maxDist_, unsigned seedLen_, BaseAligner *specialAligner);
         virtual ~AlignmentFilter();  
         
         //Functions
@@ -134,9 +132,8 @@ class AlignmentFilter {
         unsigned confDiff;
         unsigned maxDist;
         unsigned seedLen;
-        SpecialAligner *specialAligner;
+        BaseAligner *specialAligner;
 
 };
 
-*/
 

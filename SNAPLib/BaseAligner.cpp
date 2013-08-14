@@ -199,10 +199,306 @@ BaseAligner::AlignRead(Read *inputRead, unsigned *genomeLocation, Direction *hit
     return AlignRead(inputRead, genomeLocation, hitDirection, finalScore, mapq, 0, 0, FORWARD /*This is ignored when searchRadius = 0*/);
 }
 
-
 #ifdef  _DEBUG
 bool _DumpAlignments = false;
 #endif  // _DEBUG
+
+/********************************************************/
+
+    AlignmentResult
+BaseAligner::CharacterizeSeeds(Read *inputRead, unsigned searchRadius, unsigned searchLocation, bool searchRC, seed_map &map, seed_map &mapRC)
+
+{
+    //
+    // mapq and finalScore are optional parameters.  Rather than checking all over the code to see if
+    // they're null, we just point them at locals if they're not passed in.
+    //
+    int unusedMapq;
+    int unusedFinalScore;
+    firstPassSeedsNotSkipped[FORWARD] = firstPassSeedsNotSkipped[RC] = 0;
+    smallestSkippedSeed[FORWARD] = smallestSkippedSeed[RC] = InvalidGenomeLocation;
+    highestWeightListChecked = 0;
+    
+    //temp variables
+    unsigned* genomeLocation;
+    Direction *hitDirection = NULL;
+    int* mapq = NULL;
+    int* finalScore = NULL;
+    Direction searchDirection;
+    Direction localHitDirection; // This is just a place to write into if the caller didn't want to know the direction
+
+    unsigned maxSeedsToUse;
+    if (0 != maxSeedsToUseFromCommandLine) {
+        maxSeedsToUse = maxSeedsToUseFromCommandLine;
+    } else {
+        maxSeedsToUse = (int)(maxSeedCoverage * inputRead->getDataLength() / genomeIndex->getSeedLength());
+    }
+
+    if (NULL == hitDirection) {
+        hitDirection = &localHitDirection;
+    }
+
+    if (NULL == mapq) {
+        mapq = &unusedMapq;
+    }
+
+    if (NULL == finalScore) {
+        finalScore = &unusedFinalScore;
+    }
+
+    *genomeLocation = InvalidGenomeLocation; // Value to return if we don't find a location.
+    *hitDirection = FORWARD;             // So we deterministically print the read forward in this case.
+    *finalScore = UnusedScoreValue;
+
+    unsigned lookupsThisRun = 0;
+
+    popularSeedsSkipped = 0;
+
+    // Range of genome locations to search in.
+    unsigned minLocation = 0;
+    unsigned maxLocation = 0xFFFFFFFF;
+    if (searchRadius != 0) {
+        minLocation = (searchLocation > searchRadius) ? searchLocation - searchRadius : 0;
+        maxLocation = (searchLocation < 0xFFFFFFFF - searchRadius) ? searchLocation + searchRadius : 0xFFFFFFFF;
+    }
+
+    AlignmentResult finalResult;
+
+    //
+    // A bitvector for used seeds, indexed on the starting location of the seed within the read.
+    //
+    if (inputRead->getDataLength() > maxReadSize) {
+        fprintf(stderr,"BaseAligner:: got too big read (%d > %d)", inputRead->getDataLength(), maxReadSize);
+        soft_exit(1);
+    }
+
+    if ((int)inputRead->getDataLength() < seedLen) {
+        //
+        // Too short to have any seeds, it's hopeless.
+        //
+        return NotFound;
+    }
+
+    //
+    // Clear out the seed used array.
+    //
+    memset(seedUsed, 0, (inputRead->getDataLength() + 7) / 8);
+
+    unsigned readLen = inputRead->getDataLength();
+    const char *readData = inputRead->getData();
+    const char *readQuality = inputRead->getQuality();
+    unsigned countOfNs = 0;
+    for (unsigned i = 0; i < readLen; i++) {
+        char baseByte = readData[i];
+        char complement = rcTranslationTable[baseByte];
+        rcReadData[readLen - i - 1] = complement;
+        rcReadQuality[readLen - i - 1] = readQuality[i];
+        reversedRead[FORWARD][readLen - i - 1] = baseByte;
+        reversedRead[RC][i] = complement;
+        countOfNs += nTable[baseByte];
+    }
+
+    if (countOfNs > maxK) {
+        nReadsIgnoredBecauseOfTooManyNs++;
+        return NotFound;
+    }
+
+    Read reverseComplimentRead;
+    Read *read[NUM_DIRECTIONS];
+    read[FORWARD] = inputRead;
+    read[RC] = &reverseComplimentRead;
+    read[RC]->init(NULL, 0, rcReadData, rcReadQuality, readLen);
+
+    clearCandidates();
+
+    //
+    // Initialize the bases table, which represents which bases we've checked.
+    // We have readSize - seeds size + 1 possible seeds.
+    //
+    unsigned nPossibleSeeds = readLen - seedLen + 1;
+    TRACE("nPossibleSeeds: %d\n", nPossibleSeeds);
+
+    unsigned nextSeedToTest = 0;
+    unsigned wrapCount = 0;
+    lowestPossibleScoreOfAnyUnseenLocation[FORWARD] = lowestPossibleScoreOfAnyUnseenLocation[RC] = 0;
+    mostSeedsContainingAnyParticularBase[FORWARD] = mostSeedsContainingAnyParticularBase[RC] = 1;  // Instead of tracking this for real, we're just conservative and use wrapCount+1.  It's faster.
+    bestScore = UnusedScoreValue;
+    secondBestScore = UnusedScoreValue;
+    nSeedsApplied[FORWARD] = nSeedsApplied[RC] = 0;
+    lvScores = 0;
+    lvScoresAfterBestFound = 0;
+    probabilityOfAllCandidates = 0.0;
+    probabilityOfBestCandidate = 0.0;
+
+    scoreLimit = maxK + extraSearchDepth; // For MAPQ computation
+
+    while (nSeedsApplied[FORWARD] + nSeedsApplied[RC] < maxSeedsToUse) {
+        //
+        // Choose the next seed to use.  Choose the first one that isn't used
+        //
+        if (nextSeedToTest >= nPossibleSeeds) {
+            //
+            // We're wrapping.  We want to space the seeds out as much as possible, so if we had
+            // a seed length of 20 we'd want to take 0, 10, 5, 15, 2, 7, 12, 17.  To make the computation
+            // fast, we use use a table lookup.
+            //
+            wrapCount++;
+            if (wrapCount >= seedLen) {
+                return finalResult;
+            }
+            nextSeedToTest = GetWrappedNextSeedToTest(seedLen, wrapCount);
+            mostSeedsContainingAnyParticularBase[FORWARD] = mostSeedsContainingAnyParticularBase[RC] = wrapCount + 1;
+        }
+
+        while (nextSeedToTest < nPossibleSeeds && IsSeedUsed(nextSeedToTest)) {
+            //
+            // This seed is already used.  Try the next one.
+            //
+            TRACE("Skipping due to IsSeedUsed\n");
+            nextSeedToTest++;
+        }
+        if (nextSeedToTest >= nPossibleSeeds) {
+            //
+            // Unusable seeds have pushed us past the end of the read.  Go back around the outer loop so we wrap properly.
+            //
+            TRACE("Eek, we're past the end of the read\n");
+            continue;
+        }
+
+        SetSeedUsed(nextSeedToTest);
+
+        if (!Seed::DoesTextRepresentASeed(read[FORWARD]->getData() + nextSeedToTest, seedLen)) {
+            continue;
+        }
+
+        Seed seed(read[FORWARD]->getData() + nextSeedToTest, seedLen);
+
+        unsigned        nHits[NUM_DIRECTIONS];      // Number of times this seed hits in the genome
+        const unsigned  *hits[NUM_DIRECTIONS];      // The actual hits (of size nHits)
+    
+        unsigned minSeedLoc = (minLocation < readLen ? 0 : minLocation - readLen);
+        unsigned maxSeedLoc = (maxLocation > 0xFFFFFFFF - readLen ? 0xFFFFFFFF : maxLocation + readLen);
+        genomeIndex->lookupSeed(seed, minSeedLoc, maxSeedLoc, &nHits[0], &hits[0], &nHits[1], &hits[1]);
+
+        nHashTableLookups++;
+        lookupsThisRun++;
+
+        bool appliedEitherSeed = false;
+
+        for (Direction direction = 0; direction < NUM_DIRECTIONS; direction++) {
+            if (searchRadius != 0 && searchDirection != direction) {
+                //
+                // We're looking only for hits in the other direction.
+                //
+                continue;
+            }
+
+            if (nHits[direction] > maxHitsToConsider && !explorePopularSeeds) {
+                //
+                // This seed is matching too many places.  Just pretend we never looked and keep going.
+                //
+                nHitsIgnoredBecauseOfTooHighPopularity++;
+                popularSeedsSkipped++;
+                smallestSkippedSeed[direction] = __min(nHits[direction], smallestSkippedSeed[direction]);
+            } else {
+                if (0 == wrapCount) {
+                    firstPassSeedsNotSkipped[direction]++;
+                }
+
+                //
+                // Update the candidates list with any hits from this seed.  If lowest possible score of any unseen location is
+                // more than best_score + confDiff then we know that if this location is newly seen then its location won't ever be a
+                // winner, and we can ignore it.
+                //
+
+                unsigned offset;
+                if (direction == FORWARD) {
+                    offset = nextSeedToTest;
+                } else {
+                    //
+                    // The RC seed is at offset ReadSize - SeedSize - seed offset in the RC seed.
+                    //
+                    // To see why, imagine that you had a read that looked like 0123456 (where the digits
+                    // represented some particular bases, and digit' is the base's complement). Then the
+                    // RC of that read is 6'5'4'3'2'1'.  So, when we look up the hits for the seed at
+                    // offset 0 in the forward read (i.e. 012 assuming a seed size of 3) then the index
+                    // will also return the results for the seed's reverse complement, i.e., 3'2'1'.
+                    // This happens as the last seed in the RC read.
+                    //
+                    offset = readLen - seedLen - nextSeedToTest;
+                }
+
+                const unsigned prefetchDepth = 30;
+                unsigned limit = min(nHits[direction], maxHitsToConsider) + prefetchDepth;
+                for (unsigned iBase = 0 ; iBase < limit; iBase += prefetchDepth) {
+                    //
+                    // This works in two phases: we launch prefetches for a group of hash table lines,
+                    // then we do all of the inserts, and then repeat.
+                    //
+
+                    unsigned innerLimit = min(iBase + prefetchDepth, min(nHits[direction], maxHitsToConsider));
+                    if (doAlignerPrefetch) {
+                        for (unsigned i = iBase; i < innerLimit; i++) {
+                            prefetchHashTableBucket(hits[direction][i] - offset, direction);
+                        }
+                    }
+
+                    for (unsigned i = iBase; i < innerLimit; i++) {
+                        //
+                        // Find the genome location where the beginning of the read would hit, given a match on this seed.
+                        //
+                        unsigned genomeLocationOfThisHit = hits[direction][i] - offset;
+                        
+                        if (genomeLocationOfThisHit < minLocation ||
+                                genomeLocationOfThisHit > maxLocation ||
+                                hits[direction][i] < offset) { 
+                            continue;
+                        }
+                        
+                        //Insert this position into the seed map
+                        seed_map::iterator pos = map.find(genomeLocationOfThisHit);
+                                                
+                        //If this sequence is not found, create a new vector to store this sequence (and others like it)
+                        if ((pos == map.end())) {
+                            std::set<unsigned> temp;
+                            temp.insert(nextSeedToTest);
+                            map.insert(seed_map::value_type(genomeLocationOfThisHit, temp));
+                        } else {
+                            pos->second.insert(nextSeedToTest);
+                        }
+                            
+                        Candidate *candidate = NULL;
+                        HashTableElement *hashTableElement;
+
+                        findCandidate(genomeLocationOfThisHit, direction, &candidate, &hashTableElement);
+                        if (NULL != hashTableElement) {
+                            incrementWeight(hashTableElement);
+                            candidate->seedOffset = offset;
+                            _ASSERT((unsigned)candidate->seedOffset <= readLen - seedLen);
+                        } else if (lowestPossibleScoreOfAnyUnseenLocation[direction] <= scoreLimit) {
+                            _ASSERT(offset <= readLen - seedLen);
+                            allocateNewCandidate(genomeLocationOfThisHit, direction, lowestPossibleScoreOfAnyUnseenLocation[direction],
+                                    offset, &candidate, &hashTableElement);
+                        }
+                    }
+                }
+                nSeedsApplied[direction]++;
+                appliedEitherSeed = true;
+            } // not too popular
+        }   // directions 
+
+        //
+        // Move us along.
+        //
+        nextSeedToTest += seedLen;
+
+    }
+
+    return finalResult;
+}
+
+/********************************************************/
+
 
     AlignmentResult
 BaseAligner::AlignRead(
