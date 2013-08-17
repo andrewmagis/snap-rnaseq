@@ -95,9 +95,9 @@ struct AlignerOptions : public AbstractOptions
     const char         *defaultReadGroup; // if not specified in input
 
     //Quality filtering options
-    float minPercentAbovePhred;
-    unsigned minPhred;
-    unsigned phredOffset;
+    float               minPercentAbovePhred;
+    unsigned            minPhred;
+    unsigned            phredOffset;
 
     void usage();
 

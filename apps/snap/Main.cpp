@@ -51,11 +51,8 @@ static void usage()
             "\nTODO:\n"
             "0. Modify Makefile to fix g++43 to g++\n"
             "0. Figure out way to add UINT32_MAX and UINT64_MAX (Compat.h)\n"
-            "1. build transcriptome index\n"
             "2. amountRemaining for queries\n"
-            "3. pairedEndAlignment struct\n"
             "4. specialAligner\n"
-            "5. quality filtering\n"
             "6. single end reads haha\n"); 
             
     soft_exit(1);
@@ -71,7 +68,7 @@ int main(int argc, const char **argv)
     } else if (strcmp(argv[1], "index") == 0) {
         GenomeIndex::runIndexer(argc - 2, argv + 2);
     } else if (strcmp(argv[1], "transcriptome") == 0) {
-        fprintf(stderr, "Transcriptome index not implemented\n");
+        GenomeIndex::runTranscriptomeIndexer(argc - 2, argv + 2);
     } else if (strcmp(argv[1], "single") == 0 || strcmp(argv[1], "paired") == 0) {
         for (int i = 1; i < argc; /* i is increased below */) {
             unsigned nArgsConsumed;

@@ -44,7 +44,7 @@ bool isAValidAlignmentResult(AlignmentResult result);
 // constant for small/medium/large reads
 #define MAX_READ_LENGTH 300
 //#define MAX_READ_LENGTH 1000
-//#define MAX_READ_LENGTH 20000
+//#define MAX_READ_LENGTH 10000
 
 //
 // Here's a brief description of the classes for input in SNAP:
@@ -417,6 +417,19 @@ public:
                 count += IS_N[data[i]];
             }
             return count;
+        }
+        
+        bool qualityFilter(float min_percent, unsigned min_qual, unsigned offset=33) const {        
+            unsigned count = 0;
+            for (unsigned i = 0; i < dataLength; i++) {
+                if (((char)quality[i])-offset >= min_qual) {
+                    count++;
+                }
+            }
+            if ((float(count)/float(dataLength))*100.f >= min_percent) {
+                return true;
+            }
+            return false; 
         }
 
         void computeReverseCompliment(char *outputBuffer) { // Caller guarantees that outputBuffer is at least getDataLength() bytes

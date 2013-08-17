@@ -117,7 +117,7 @@ class AlignmentFilter {
         bool ProcessSplices(std::vector<AlignmentPair> &pairs, unsigned minDiff);
               
         //Temp printing
-        void PrintMaps(seed_map &map, seed_map &mapRC);
+        void PrintMaps(seed_map &map);
         
 
         Read *read0;

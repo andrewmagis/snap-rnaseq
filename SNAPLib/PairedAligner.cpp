@@ -434,6 +434,7 @@ void PairedAlignerContext::runIterationThread()
     }
 
     int maxReadSize = MAX_READ_LENGTH;
+           
     size_t g_memoryPoolSize = IntersectingPairedEndAligner::getBigAllocatorReservation(index, intersectingAlignerMaxHits, maxReadSize, index->getSeedLength(), 
                                                                 numSeedsFromCommandLine, seedCoverage, maxDist, extraSearchDepth);
     size_t t_memoryPoolSize = IntersectingPairedEndAligner::getBigAllocatorReservation(transcriptome, intersectingAlignerMaxHits, maxReadSize, transcriptome->getSeedLength(), 
@@ -473,9 +474,29 @@ void PairedAlignerContext::runIterationThread()
         forceSpacing,
         extraSearchDepth,
         t_intersectingAligner);
+    
+    //This is for partial matching
+    BigAllocator *p_allocator = new BigAllocator(BaseAligner::getBigAllocatorReservation(true, maxHits, maxReadSize, index->getSeedLength(), numSeedsFromCommandLine, seedCoverage));
+    BaseAligner *partialAligner = new (p_allocator) BaseAligner(
+            index,
+            maxHits,
+            maxDist,
+            maxReadSize,
+            15, //This is instead of seedCoverage
+            seedCoverage,
+            extraSearchDepth,
+            NULL,               // LV (no need to cache in the single aligner)
+            NULL,               // reverse LV
+            stats,
+            p_allocator);
+            
+    p_allocator->assertAllMemoryUsed();
+    p_allocator->checkCanaries();
+    partialAligner->setExplorePopularSeeds(options->explorePopularSeeds);
+    partialAligner->setStopOnFirstHit(options->stopOnFirstHit);
            
     ReadWriter *readWriter = this->readWriter;
-
+    
 #ifdef  _MSC_VER
     if (options->useTimingBarrier) {
         if (0 == InterlockedDecrementAndReturnNewValue(nThreadsAllocatingMemory)) {
@@ -501,12 +522,17 @@ void PairedAlignerContext::runIterationThread()
         }
 
         stats->totalReads += 2;
-
+        
         // Skip the pair if there are too many Ns or 2s.
         int maxDist = this->maxDist;
         bool useful0 = read0->getDataLength() >= 50 && (int)read0->countOfNs() <= maxDist;
         bool useful1 = read1->getDataLength() >= 50 && (int)read1->countOfNs() <= maxDist;
-        if (!useful0 && !useful1) {
+        
+        //Quality filtering
+        bool quality0 = read0->qualityFilter(options->minPercentAbovePhred, options->minPhred, options->phredOffset);
+        bool quality1 = read1->qualityFilter(options->minPercentAbovePhred, options->minPhred, options->phredOffset);
+        
+        if ((!useful0 && !useful1) || (!quality0 || !quality0)) {
             PairedAlignmentResult result;
             result.status[0] = NotFound;
             result.status[1] = NotFound;
@@ -530,19 +556,19 @@ void PairedAlignerContext::runIterationThread()
         //Make users setting
         unsigned confDiff = 2;
         
-        AlignmentFilter filter(read0, read1, index->getGenome(), transcriptome->getGenome(), gtf, minSpacing, maxSpacing, confDiff, options->maxDist.start, index->getSeedLength(), NULL);
+        AlignmentFilter filter(read0, read1, index->getGenome(), transcriptome->getGenome(), gtf, minSpacing, maxSpacing, confDiff, options->maxDist.start, index->getSeedLength(), partialAligner);
 
         //Align to transcriptome
-        //t_aligner->align(read0, read1, &result);
-        //filter.AddAlignment(result.location[0], result.direction[0], result.score[0], true, false);
-        //filter.AddAlignment(result.location[1], result.direction[1], result.score[1], true, true);
+        t_aligner->align(read0, read1, &result);
+        filter.AddAlignment(result.location[0], result.direction[0], result.score[0], true, false);
+        filter.AddAlignment(result.location[1], result.direction[1], result.score[1], true, true);
        
         g_aligner->align(read0, read1, &result);
         filter.AddAlignment(result.location[0], result.direction[0], result.score[0], false, false);
         filter.AddAlignment(result.location[1], result.direction[1], result.score[1], false, true);
        
         //Perform the primary filtering of all aligned reads
-        //unsigned status = filter.Filter(&result);
+        unsigned status = filter.Filter(&result);
         
         if (forceSpacing && isOneLocation(result.status[0]) != isOneLocation(result.status[1])) {
             // either both align or neither do
@@ -568,6 +594,7 @@ void PairedAlignerContext::runIterationThread()
 
     stats->lvCalls = g_aligner->getLocationsScored();
 
+    delete partialAligner;
     delete g_aligner;
     delete t_aligner;
     delete supplier;
@@ -576,6 +603,8 @@ void PairedAlignerContext::runIterationThread()
     t_intersectingAligner->~IntersectingPairedEndAligner();
     delete g_allocator;
     delete t_allocator;
+    delete p_allocator;
+
 }
 
 void PairedAlignerContext::writePair(Read* read0, Read* read1, PairedAlignmentResult* result)

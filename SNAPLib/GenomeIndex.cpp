@@ -34,12 +34,30 @@ Revision History:
 #include "HashTable.h"
 #include "Seed.h"
 #include "exit.h"
+#include "GTFReader.h"
 
 using namespace std;
 
 static const int DEFAULT_SEED_SIZE = 20;
 static const double DEFAULT_SLACK = 0.3;
 
+static void tusage()
+{
+    fprintf(stderr,
+            "Usage: snap trans <input.gtf> <input.fa> <output-dir> [<options>]\n"
+            "Options:\n"
+            "  -s           Seed size (default: %d)\n"
+            "  -h           Hash table slack (default: %.1f)\n"
+            "  -hg19        Use pre-computed table bias for hg19, which results in better speed, balance, and memory footprint but may not work for other references.\n"
+            "  -Ofactor     Specify the size of the overflow space.  This will change the memory footprint, but may be needed for some genomes.\n"
+            "               Larger numbers use more memory but work better with more repetitive genomes.  Smaller numbers reduce the memory\n"
+            "               footprint, but may cause the index build to fail.  Making -O larger than necessary will not affect the resuting\n"
+            "               index.  Factor must be between 1 and 1000, and the default is 40.\n"
+            " -tMaxThreads  Specify the maximum number of threads to use. Default is the number of cores\n",
+            DEFAULT_SEED_SIZE,
+            DEFAULT_SLACK);
+    exit(1);
+}
 
 static void usage()
 {
@@ -58,6 +76,43 @@ static void usage()
             DEFAULT_SEED_SIZE,
             DEFAULT_SLACK);
     soft_exit(1);
+}
+
+    void
+GenomeIndex::runTranscriptomeIndexer(
+    int argc,
+    const char **argv)
+{
+    if (argc < 3) {
+        tusage();
+    }
+
+    const char *gtfFile = argv[0];
+    const char *fastaFile = argv[1];
+    const char *outputDir = argv[2];
+
+    double slack = DEFAULT_SLACK;
+    printf("Hash table slack %lf\nLoading genome FASTA file '%s' into memory...", slack, fastaFile);
+    fflush(stdout);
+    _int64 start = timeInMillis();
+    const Genome *genome = ReadFASTAGenome(fastaFile);
+    if (NULL == genome) {
+        fprintf(stderr, "Unable to read Genome FASTA file\n");
+        exit(1);
+    }
+    printf("%llds\n", (timeInMillis() + 500 - start) / 1000);
+
+    //First build the transcriptome file
+    GTFReader gtf;
+    gtf.Load(gtfFile);
+    
+    //Pass in the genome to the GTF object to write out the transcriptome file
+    gtf.BuildTranscriptome(genome);
+    
+    //Replace the input FASTA file with the newly created transcriptome file
+    argv[1] = "transcriptome.fa";
+    GenomeIndex::runIndexer(argc-1, argv+1);
+    
 }
 
 

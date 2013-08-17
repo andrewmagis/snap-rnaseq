@@ -236,13 +236,13 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
     } else if (mate0.size() == 0) {
         
         flag |= 1 << FIRST_NOT_ALIGNED;
-        //UnalignedRead(read1, seedLen);
+        UnalignedRead(read1, seedLen);
     
     //If there are no alignments for mate1
     } else if (mate1.size() == 0) {
     
         flag |= 1 << SECOND_NOT_ALIGNED;
-        //UnalignedRead(read0, seedLen);    
+        UnalignedRead(read0, seedLen);    
     }
     
     //Iterate through all mate0;
@@ -466,7 +466,7 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
         
     //Pairs on the same chromosome get next priority
     if (intrachromosomal_pairs.size() > 0) {
-      
+
         ProcessPairs(result, intrachromosomal_pairs);
     
         //If this is a good hit, check to make sure there is no RC hit that is better
@@ -478,12 +478,12 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
         if (intrachromosomal_pairs[0].distance <= maxSpacing) {
             return 1;
         }
-       
+        
         //If this is still a good hit, check to make sure there is no partial hit that is better
         if (result->status[0] == SingleHit) { 
             FindPartialMatches(result, intrachromosomal_pairs[0]);
         }
-        
+
         //If this is still a good hit, add this in as a chr link
         if (result->status[0] == SingleHit) {
             //Link these positions in the GTF object
@@ -491,7 +491,7 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
                                       intrachromosomal_pairs[0].align2->rname, intrachromosomal_pairs[0].align2->pos, intrachromosomal_pairs[0].align2->pos_end, 
                                       string(read0->getId(), read0->getIdLength()));      
         }
-        
+
         return 1;
     }    
 
@@ -550,13 +550,17 @@ void AlignmentFilter::UnalignedRead(Read *read, unsigned minDiff) {
     std::vector<AlignmentPair> intrachromosomal_splices;
     std::vector<AlignmentPair> interchromosomal_splices;
     
-    //Get the seeds associated with each alignment
-    specialAligner->setReadId(0); 
-    specialAligner->CharacterizeSeeds(read, 0, 0, false, map, mapRC);    
+    //Temp variables, but may be able to use them later
+    unsigned location = InvalidGenomeLocation;
+    Direction direction;
+    int score;
+    int mapq;
     
+    specialAligner->setReadId(0);
+    specialAligner->CharacterizeSeeds(read, &location, &direction, &score, &mapq, 0, 0, FORWARD, map);   
     char flag = 0;
     
-    //PrintMaps(map, mapRC);
+    //PrintMaps(map);
     
     for (seed_map::iterator it = map.begin(); it != map.end(); ++it) {       
         for (seed_map::iterator it2 = it; it2 != map.end(); ++it2) {
@@ -642,7 +646,8 @@ void AlignmentFilter::UnalignedRead(Read *read, unsigned minDiff) {
             }         
         }
     }
-        
+     
+    /*
     for (seed_map::iterator it = mapRC.begin(); it != mapRC.end(); ++it) {    
         for (seed_map::iterator it2 = it; it2 != mapRC.end(); ++it2) {
         
@@ -727,6 +732,7 @@ void AlignmentFilter::UnalignedRead(Read *read, unsigned minDiff) {
             }         
         }
     }
+    */
     
     //Now we go through each of the three sets, prioritizing the cis-gene model, as before
     if (intragene_unannotated_splices.size() > 0) {
@@ -810,19 +816,23 @@ bool AlignmentFilter::ProcessSplices(std::vector<AlignmentPair> &pairs, unsigned
 
 void AlignmentFilter::FindPartialMatches(PairedAlignmentResult *result, AlignmentPair &pair) {
 
-    seed_map map0, mapRC0, map1, mapRC1;
+    seed_map map0, map1;
             
-    //Get the seeds associated with each alignment
-    specialAligner->setReadId(0); 
-    specialAligner->CharacterizeSeeds(read0, 0, 0, false, map0, mapRC0); 
+    //Temp variables, but may be able to use them later
+    unsigned location = InvalidGenomeLocation;
+    Direction direction;
+    int score;
+    int mapq;
     
-    //Get the seeds associated with each alignment
+    specialAligner->setReadId(0);
+    specialAligner->CharacterizeSeeds(read0, &location, &direction, &score, &mapq, 0, 0, FORWARD, map0);
+
     specialAligner->setReadId(1); 
-    specialAligner->CharacterizeSeeds(read1, 0, 0, false, map1, mapRC1);
+    specialAligner->CharacterizeSeeds(read1, &location, &direction, &score, &mapq, 0, 0, FORWARD, map1);
     
     //Print these maps
-    //PrintMaps(map0, mapRC0);
-    //PrintMaps(map1, mapRC1); 
+    //PrintMaps(map0);
+    //PrintMaps(map1); 
     
     //The goal here is to look for possible partial alignments that could occur between
     //reads that are close together
@@ -838,27 +848,33 @@ void AlignmentFilter::FindPartialMatches(PairedAlignmentResult *result, Alignmen
             locs0.push_back(it->first + *(it->second.begin()));
         }
     }
+    
+    /*
     for (seed_map::iterator it = mapRC0.begin(); it != mapRC0.end(); ++it) {
         if (it->second.size() >= min_size) {
             locs0.push_back(it->first + (read0->getDataLength() - *(it->second.rbegin())));
         }
     }
+    */
     
     for (seed_map::iterator it = map1.begin(); it != map1.end(); ++it) {
         if (it->second.size() >= min_size) {
             locs1.push_back(it->first + *(it->second.begin()));
         }
     }
+    
+    /*
     for (seed_map::iterator it = mapRC1.begin(); it != mapRC1.end(); ++it) {
         if (it->second.size() >= min_size) {
             locs1.push_back(it->first + (read1->getDataLength() - *(it->second.rbegin())));
         }
     }
-    
+    */
+       
     //Now loop over the possible locations, finding valid pairs
     for (vector<unsigned>::iterator it0 = locs0.begin(); it0 != locs0.end(); ++it0) {
         for (vector<unsigned>::iterator it1 = locs1.begin(); it1 != locs1.end(); ++it1) {
-        
+
             const Genome::Piece *piece0 = genome->getPieceAtLocation(*it0);
             string chr0 = piece0->name;
             int pos0 = (*it0) - piece0->beginningOffset + 1; 
@@ -957,7 +973,7 @@ void AlignmentFilter::ProcessPairs(PairedAlignmentResult* result, std::vector<Al
     }
 }
 
-void AlignmentFilter::PrintMaps(seed_map &map, seed_map &mapRC) {
+void AlignmentFilter::PrintMaps(seed_map &map) {
 
     printf("READ\n");
     for (seed_map::iterator it = map.begin(); it != map.end(); ++it) {
@@ -969,22 +985,6 @@ void AlignmentFilter::PrintMaps(seed_map &map, seed_map &mapRC) {
         unsigned pos0 = it->first - piece0->beginningOffset + 1; 
         
         printf("Pos: %s %u %u\n", chr0, pos0, it->second.size());
-        for (std::set<unsigned>::iterator it2 = it->second.begin(); it2 != it->second.end(); ++it2) {
-            printf("%u\n", *it2);
-        }   
-        
-    }
-
-    printf("READRC\n");
-    for (seed_map::iterator it = mapRC.begin(); it != mapRC.end(); ++it) {
-        
-        printf("RCPos: %u\n", it->first);
-        
-        const Genome::Piece *piece0 = genome->getPieceAtLocation(it->first);
-        const char* chr0 = piece0->name;
-        unsigned pos0 = it->first - piece0->beginningOffset + 1; 
-        
-        printf("PosRC: %s %u %u\n", chr0, pos0, it->second.size());
         for (std::set<unsigned>::iterator it2 = it->second.begin(); it2 != it->second.end(); ++it2) {
             printf("%u\n", *it2);
         }   

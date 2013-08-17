@@ -81,6 +81,7 @@ IntersectingPairedEndAligner::~IntersectingPairedEndAligner()
 IntersectingPairedEndAligner::getBigAllocatorReservation(GenomeIndex * index, unsigned maxBigHitsToConsider, unsigned maxReadSize, unsigned seedLen, unsigned numSeedsFromCommandLine, 
                                                          double seedCoverage, unsigned maxEditDistanceToConsider, unsigned maxExtraSearchDepth)
 {
+
     unsigned maxSeedsToUse;
     if (0 != numSeedsFromCommandLine) {
         maxSeedsToUse = numSeedsFromCommandLine;

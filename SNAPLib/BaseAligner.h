@@ -82,12 +82,26 @@ public:
         
         AlignmentResult
     CharacterizeSeeds(
+        Read      *inputRead,
+        unsigned  *genomeLocation,
+        Direction *hitDirection,
+        int       *finalScore,
+        int       *mapq,
+        unsigned   searchRadius,
+        unsigned   searchLocation,
+        Direction  searchDirection,
+        seed_map  &map);
+        
+        /*
+        AlignmentResult
+    CharacterizeSeeds(
         Read        *read, 
         unsigned    searchRadius, 
         unsigned    searchLocation, 
         bool        searchRC, 
         seed_map    &map, 
         seed_map    &mapRC);
+        */
         
     //
     // Statistics gathering.

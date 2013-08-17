@@ -25,6 +25,8 @@ Revision History:
 #include "Compat.h"
 #include "exit.h"
 
+using namespace std;
+
 bool BigAllocUseHugePages = true;
 
 
@@ -336,6 +338,7 @@ void *BigAlloc(
     flags |= MAP_HUGETLB;
 #endif
     char *mem = (char *) mmap(NULL, sizeToAllocate, PROT_READ|PROT_WRITE, flags, -1, 0);
+    
     if (mem == MAP_FAILED) {
         perror("mmap");
         soft_exit(1);

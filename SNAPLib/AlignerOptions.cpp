@@ -62,7 +62,10 @@ AlignerOptions::AlignerOptions(
     extraSearchDepth(2),
     defaultReadGroup("FASTQ"),
     seedCountSpecified(false),
-    numSeedsFromCommandLine(0)
+    numSeedsFromCommandLine(0),
+    minPercentAbovePhred(90.0),
+    minPhred(20),
+    phredOffset(33)
 {
     if (forPairedEnd) {
         maxDist             = 15;
@@ -126,13 +129,20 @@ AlignerOptions::usageMessage()
         "  --hp Indicates not to use huge pages (this may speed up index load and slow down alignment)\n"
         "  -D   Specifies the extra search depth (the edit distance beyond the best hit that SNAP uses to compute MAPQ).  Default 2\n"
         "  -rg  Specify the default read group if it is not specified in the input file\n"
+        "\n"
+        "  -fm  Quality filtering: specify the minimum Phred score (default: %u)\n"
+        "  -fp  Quality filtering: specify the minimum percent of bases >= the minimum Phred score (default: %lf)\n"
+        "  -fo  Quality filtering: specify the Phred offset (default: %u)\n"
 
 // not written yet        "  -r   Specify the content of the @RG line in the SAM header.\n"
             ,
             commandLine,
             maxDist.start,
             seedCoverage,
-            maxHits.start);
+            maxHits.start,
+            minPercentAbovePhred,
+            minPhred,
+            phredOffset);
             
     if (extra != NULL) {
         extra->usageMessage();
@@ -248,12 +258,29 @@ AlignerOptions::parse(
             }
             return true;
         }
+        
     } else if (strcmp(argv[n], "-sm") == 0) {
         if (n + 1 < argc && argv[n+1][0] >= '0' && argv[n+1][0] <= '9') {
             sortMemory = atoi(argv[n+1]);
             n++;
             return true;
         }
+        
+    } else if (strcmp(argv[n], "-fm") == 0) {
+        minPercentAbovePhred = atof(argv[n+1]);
+        n++;
+        return true;
+        
+    } else if (strcmp(argv[n], "-fp") == 0) {
+        minPhred = atoi(argv[n+1]);
+        n++;
+        return true;
+        
+    } else if (strcmp(argv[n], "-fo") == 0) {
+        phredOffset = atoi(argv[n+1]);
+        n++;
+        return true;
+         
     } else if (strcmp(argv[n], "-F") == 0) {
         if (n + 1 < argc) {
             n++;
