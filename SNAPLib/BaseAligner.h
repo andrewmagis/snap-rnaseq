@@ -90,7 +90,8 @@ public:
         unsigned   searchRadius,
         unsigned   searchLocation,
         Direction  searchDirection,
-        seed_map  &map);
+        seed_map  &map,
+        seed_map  &mapRC);
         
         /*
         AlignmentResult

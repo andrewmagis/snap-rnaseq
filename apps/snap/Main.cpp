@@ -73,9 +73,8 @@ int main(int argc, const char **argv)
         for (int i = 1; i < argc; /* i is increased below */) {
             unsigned nArgsConsumed;
             if (strcmp(argv[i], "single") == 0) {
-                //SingleAlignerContext single;
-                //single.runAlignment(argc - (i + 1), argv + i + 1, SNAP_VERSION, &nArgsConsumed);
-                fprintf(stderr, "Single-end alignments are not currently supported\n");
+                SingleAlignerContext single;
+                single.runAlignment(argc - (i + 1), argv + i + 1, SNAP_VERSION, &nArgsConsumed);
             } else if (strcmp(argv[i], "paired") == 0) {
                 PairedAlignerContext paired;
                 paired.runAlignment(argc - (i + 1), argv + i + 1, SNAP_VERSION, &nArgsConsumed);

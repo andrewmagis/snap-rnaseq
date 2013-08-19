@@ -224,7 +224,7 @@ AlignerOptions::parse(
         if (n + 1 < argc) {
             outputFileTemplate = argv[n+1];
             n++;
-            return true;
+            return true;           
         }
     } else if (strcmp(argv[n], "-e") == 0) {
         computeError = true;

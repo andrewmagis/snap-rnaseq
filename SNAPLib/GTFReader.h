@@ -291,7 +291,7 @@ class GTFReader {
 
     public:
 
-        GTFReader();
+        GTFReader(const char* output = NULL);
         virtual ~GTFReader();
         
         int Load(string filename);
@@ -321,7 +321,7 @@ class GTFReader {
         void InterchromosomalPair(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id);
         void InterchromosomalSplice(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id);
 
-        void PrintGeneAssociations();
+        void AnalyzeReadIntervals();
         void WriteReadCounts();
                
         void Test();
@@ -331,7 +331,8 @@ class GTFReader {
         int Parse(string line);
         unsigned ConsolidateReadIntervals(unsigned buffer);
         
-        string filename;
+        std::string filename;
+        std::string prefix;
         feature_map features;
         transcript_map transcripts;
         gene_map genes;

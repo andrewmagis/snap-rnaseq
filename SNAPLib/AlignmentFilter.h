@@ -43,17 +43,19 @@ class Alignment {
 
     public:
     
-        Alignment(unsigned location_, bool isRC_, int score_, string rname_, unsigned pos_, unsigned pos_end_, unsigned pos_original_, string transcript_id_, string gene_id_, bool isTranscriptome_);
+        Alignment(unsigned location_, Direction direction_, int score_, int mapq, string rname_, unsigned pos_, unsigned pos_end_, unsigned pos_original_, string transcript_id_, string gene_id_, bool isTranscriptome_);
         virtual ~Alignment() {}
         Alignment(const Alignment &rhs);
         Alignment& operator=(const Alignment&rhs);
+        bool operator<(const Alignment &rhs) const;
         void Print();
         
     protected:
     
         unsigned location;
-        bool isRC;
-        unsigned score;
+        Direction direction;
+        int score;
+        int mapq;
         string rname;
         unsigned pos;
         unsigned pos_end;
@@ -101,8 +103,9 @@ class AlignmentFilter {
         virtual ~AlignmentFilter();  
         
         //Functions
-        int AddAlignment(unsigned location, bool isRC, int score, bool isTranscriptome, bool isMate0); 
-        int Filter(PairedAlignmentResult* result);    
+        int AddAlignment(unsigned location, Direction direction, int score, int mapq, bool isTranscriptome, bool isMate0); 
+        int Filter(PairedAlignmentResult* result);
+        AlignmentResult FilterSingle(unsigned* location, Direction* direction, int* score, int* mapq, bool* isTranscriptome);   
         
     protected:
     
@@ -117,7 +120,7 @@ class AlignmentFilter {
         bool ProcessSplices(std::vector<AlignmentPair> &pairs, unsigned minDiff);
               
         //Temp printing
-        void PrintMaps(seed_map &map);
+        void PrintMaps(seed_map& map, seed_map& mapRC);
         
 
         Read *read0;

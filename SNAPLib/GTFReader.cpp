@@ -550,7 +550,6 @@ GTFFeature::GTFFeature(string line)
             
             //Remove any quotes or spaces from each string
             value.erase(remove(value.begin(), value.end(), '\"' ), value.end());
-            //printf("value: %s key: %s\n", value.c_str(), key.c_str());
             attributes.insert(std::map<string,string>::value_type(key, value));
         }
     }
@@ -905,7 +904,18 @@ void GTFTranscript::WriteReadCountName(ofstream &outfile) const {
 }
 
 //Constructor
-GTFReader::GTFReader() {}
+GTFReader::GTFReader(const char* output) {
+
+    prefix = "default";
+    if (NULL != output) {
+        prefix = output;
+        size_t pos;
+        if ((pos = prefix.rfind('.')) != std::string::npos) {
+            prefix = prefix.substr(0, pos);
+        }
+    }
+
+}
 
 //Destructor
 GTFReader::~GTFReader() {
@@ -1321,12 +1331,12 @@ void GTFReader::WriteReadCounts() {
 
     ofstream transcript_name_counts, transcript_id_counts;
     ofstream gene_name_counts, gene_id_counts;
+
+    transcript_id_counts.open((prefix+".transcript_id.counts.txt").c_str());
+    gene_id_counts.open((prefix+".gene_id.counts.txt").c_str());
     
-    transcript_id_counts.open("transcript_id.counts.txt");
-    gene_id_counts.open("gene_id.counts.txt");
-    
-    transcript_name_counts.open("transcript_name.counts.txt");
-    gene_name_counts.open("gene_name.counts.txt");
+    transcript_name_counts.open((prefix+".transcript_name.counts.txt").c_str());
+    gene_name_counts.open((prefix+".gene_name.counts.txt").c_str());
 
     //Go though each transcript and write
     for (transcript_map::iterator it = transcripts.begin(); it != transcripts.end(); ++it) {
@@ -1374,7 +1384,7 @@ void GTFReader::WriteReadCounts() {
 
 }
 
-void GTFReader::PrintGeneAssociations() {
+void GTFReader::AnalyzeReadIntervals() {
 
     unsigned pairedBuffer = 100;
     unsigned splicedBuffer = 0;
@@ -1385,12 +1395,12 @@ void GTFReader::PrintGeneAssociations() {
     //Open output file
     ofstream interchromosomal_file, intrachromosomal_file, unannotated_file, circular_file;
     ofstream logfile, readfile;
-    interchromosomal_file.open("interchromosomal_intervals.gtf");
-    intrachromosomal_file.open("intrachromosomal_intervals.gtf");
-    unannotated_file.open("unannotated_intervals.gtf");
-    circular_file.open("circular_intervals.gtf");
-	logfile.open("read_intervals.txt");
-	readfile.open("read_ids.txt");
+    interchromosomal_file.open((prefix+".interchromosomal_intervals.gtf").c_str());
+    intrachromosomal_file.open((prefix+".intrachromosomal_intervals.gtf").c_str());
+    unannotated_file.open((prefix+".unannotated_intervals.gtf").c_str());
+    circular_file.open((prefix+".circular_intervals.gtf").c_str());
+	logfile.open((prefix+".read_intervals.txt").c_str());
+	readfile.open((prefix+".read_ids.txt").c_str());
 
     interchromosomal_pairs.Consolidate(this, pairedBuffer);
     interchromosomal_splices.Consolidate(this, splicedBuffer);

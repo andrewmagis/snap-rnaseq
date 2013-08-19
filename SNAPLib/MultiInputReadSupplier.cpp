@@ -211,6 +211,7 @@ MultiInputReadSupplierGenerator::~MultiInputReadSupplierGenerator()
     ReadSupplier *
 MultiInputReadSupplierGenerator::generateNewReadSupplier()
 {
+
     ReadSupplier **readSuppliers = new ReadSupplier *[nReadSuppliers];
     for (int i = 0; i < nReadSuppliers; ) {
         readSuppliers[i] = readSupplierGenerators[i]->generateNewReadSupplier();

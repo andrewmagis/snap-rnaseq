@@ -38,6 +38,7 @@ Revision History:
 #include "Util.h"
 #include "SingleAligner.h"
 #include "MultiInputReadSupplier.h"
+#include "AlignmentFilter.h"
 
 using namespace std;
 using util::stringEndsWith;
@@ -59,37 +60,40 @@ SingleAlignerContext::parseOptions(
     version = i_version;
 
     AlignerOptions* options = new AlignerOptions(
-        "snap single <index-dir> <inputFile(s)> [<options>]"
+        "snap single <genome-dir> <transcriptome-dir> <annotation> <inputFile(s)> [<options>]"
 		"   where <input file(s)> is a list of files to process.\n",false);
     options->extra = extension->extraOptions();
-    if (argc < 2) {
+    if (argc < 4) {
         options->usage();
     }
 
     options->indexDir = argv[0];
+    options->transcriptomeDir = argv[1];
+    options->annotation = argv[2];
 
 	int nInputs = 0;
-	for (int i = 1; i < argc; i++) {
+	for (int i = 3; i < argc; i++) {
 		if (argv[i][0] == '-' || argv[i][0] == ',' && argv[i][1] == '\0') {
 			break;
 		}
 		nInputs++;
 	}
-
+	
 	if (0 == nInputs) {
 		options->usage();
 	}
 
 	options->nInputs = nInputs;
 	options->inputs = new SNAPInput[nInputs];
+	
+	for (int i = 3; i < argc; i++) {
 
-	for (int i = 1; i < argc; i++) {
 		if (argv[i][0] == '-' || argv[i][0] == ',' && argv[i][1] == '\0') {
 			break;
 		}
-
-		options->inputs[i-1].fileName = argv[i];
-		options->inputs[i-1].fileType =
+				
+		options->inputs[i-3].fileName = argv[i];
+		options->inputs[i-3].fileType =
             stringEndsWith(argv[i],".sam") ? SAMFile :
             stringEndsWith(argv[i],".bam") ? BAMFile :
             stringEndsWith(argv[i], ".fastq.gz") || stringEndsWith(argv[i], ".fq.gz") ? GZipFASTQFile :
@@ -97,7 +101,8 @@ SingleAlignerContext::parseOptions(
 	}
 
     int n;
-    for (n = 1 + nInputs; n < argc; n++) {
+    for (n = 3 + nInputs; n < argc; n++) {
+        
         bool done;
         if (! options->parse(argv, argc, n, &done)) {
             options->usage();
@@ -130,6 +135,7 @@ SingleAlignerContext::runTask()
 SingleAlignerContext::runIterationThread()
 {
     ReadSupplier *supplier = readSupplierGenerator->generateNewReadSupplier();
+    
     if (NULL == supplier) {
         //
         // No work for this thread to do.
@@ -137,6 +143,7 @@ SingleAlignerContext::runIterationThread()
         return;
     }
     if (index == NULL) {
+    
         // no alignment, just input/output
         Read *read;
         while (NULL != (read = supplier->getNextRead())) {
@@ -146,12 +153,11 @@ SingleAlignerContext::runIterationThread()
         delete supplier;
         return;
     }
-
+    
     int maxReadSize = MAX_READ_LENGTH;
  
-    BigAllocator *allocator = new BigAllocator(BaseAligner::getBigAllocatorReservation(true, maxHits, maxReadSize, index->getSeedLength(), numSeedsFromCommandLine, seedCoverage));
-   
-    BaseAligner *aligner = new (allocator) BaseAligner(
+    BigAllocator *g_allocator = new BigAllocator(BaseAligner::getBigAllocatorReservation(true, maxHits, maxReadSize, index->getSeedLength(), numSeedsFromCommandLine, seedCoverage));
+    BaseAligner *g_aligner = new (g_allocator) BaseAligner(
             index,
             maxHits,
             maxDist,
@@ -162,13 +168,31 @@ SingleAlignerContext::runIterationThread()
             NULL,               // LV (no need to cache in the single aligner)
             NULL,               // reverse LV
             stats,
-            allocator);
+            g_allocator);
 
-    allocator->assertAllMemoryUsed();
-    allocator->checkCanaries();
+    g_allocator->assertAllMemoryUsed();
+    g_allocator->checkCanaries();
+    g_aligner->setExplorePopularSeeds(options->explorePopularSeeds);
+    g_aligner->setStopOnFirstHit(options->stopOnFirstHit);
 
-    aligner->setExplorePopularSeeds(options->explorePopularSeeds);
-    aligner->setStopOnFirstHit(options->stopOnFirstHit);
+    BigAllocator *t_allocator = new BigAllocator(BaseAligner::getBigAllocatorReservation(true, maxHits, maxReadSize, transcriptome->getSeedLength(), numSeedsFromCommandLine, seedCoverage));    
+    BaseAligner *t_aligner = new (t_allocator) BaseAligner(
+            transcriptome,
+            maxHits,
+            maxDist,
+            maxReadSize,
+            numSeedsFromCommandLine,
+            seedCoverage,
+            extraSearchDepth,
+            NULL,               // LV (no need to cache in the single aligner)
+            NULL,               // reverse LV
+            stats,
+            t_allocator);
+
+    t_allocator->assertAllMemoryUsed();
+    t_allocator->checkCanaries();
+    t_aligner->setExplorePopularSeeds(options->explorePopularSeeds);
+    t_aligner->setStopOnFirstHit(options->stopOnFirstHit);
 
 #ifdef  _MSC_VER
     if (options->useTimingBarrier) {
@@ -184,9 +208,12 @@ SingleAlignerContext::runIterationThread()
     Read *read;
     while (NULL != (read = supplier->getNextRead())) {
         stats->totalReads++;
+        
+        //Quality filtering
+        bool quality = read->qualityFilter(options->minPercentAbovePhred, options->minPhred, options->phredOffset);
 
         // Skip the read if it has too many Ns or trailing 2 quality scores.
-        if (read->getDataLength() < 50 || read->countOfNs() > maxDist) {
+        if (read->getDataLength() < 50 || read->countOfNs() > maxDist || !quality) {
             if (readWriter != NULL && options->passFilter(read, NotFound)) {
                 readWriter->writeRead(read, NotFound, 0, InvalidGenomeLocation, false, false, 0);
             }
@@ -199,16 +226,24 @@ SingleAlignerContext::runIterationThread()
         Direction direction;
         int score;
         int mapq;
-        
-        fprintf(stderr, "Need to finish this part, set transcriptome and flag\n");
-        
+
         //Set transcriptome and flag here
         bool isTranscriptome = false;
         char flag = 0;
 
-        AlignmentResult result = aligner->AlignRead(read, &location, &direction, &score, &mapq);
+        unsigned confDiff = 2;
+        AlignmentFilter filter(NULL, read, index->getGenome(), transcriptome->getGenome(), gtf, 0, 0, confDiff, options->maxDist.start, index->getSeedLength(), g_aligner);
 
-        allocator->checkCanaries();
+        AlignmentResult t_result = t_aligner->AlignRead(read, &location, &direction, &score, &mapq);
+        t_allocator->checkCanaries();
+        filter.AddAlignment(location, direction, score, mapq, true, true);
+
+        AlignmentResult g_result = g_aligner->AlignRead(read, &location, &direction, &score, &mapq);
+        g_allocator->checkCanaries();
+        filter.AddAlignment(location, direction, score, mapq, false, true);
+        
+        //Filter the results
+        AlignmentResult result = filter.FilterSingle(&location, &direction, &score, &mapq, &isTranscriptome);
 
         bool wasError = false;
         if (result != NotFound && computeError) {
@@ -219,14 +254,20 @@ SingleAlignerContext::runIterationThread()
         
         updateStats(stats, read, result, location, score, mapq, wasError);
     }
+    
+    //Process all the intervals and read counts
+    //gtf->PrintGeneAssociations(); //no intervals for single end reads
+    gtf->WriteReadCounts();
 
-    aligner->~BaseAligner(); // This calls the destructor without calling operator delete, allocator owns the memory.
+    g_aligner->~BaseAligner(); // This calls the destructor without calling operator delete, allocator owns the memory.
+    t_aligner->~BaseAligner(); 
  
     if (supplier != NULL) {
         delete supplier;
     }
 
-    delete allocator;   // This is what actually frees the memory.
+    delete g_allocator;   // This is what actually frees the memory.
+    delete t_allocator;
 }
     
     void
@@ -277,6 +318,7 @@ SingleAlignerContext::updateStats(
     void 
 SingleAlignerContext::typeSpecificBeginIteration()
 {
+
     readerContext.header = NULL;
     options->inputs[0].readHeader(readerContext);
 
@@ -284,7 +326,7 @@ SingleAlignerContext::typeSpecificBeginIteration()
         //
         // We've only got one input, so just connect it directly to the consumer.
         //
-        readSupplierGenerator = options->inputs[0].createReadSupplierGenerator(options->numThreads, readerContext);
+        readSupplierGenerator = options->inputs[0].createReadSupplierGenerator(options->numThreads, readerContext);       
     } else {
         //
         // We've got multiple inputs, so use a MultiInputReadSupplier to combine the individual inputs.

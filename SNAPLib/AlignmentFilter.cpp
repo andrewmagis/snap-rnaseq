@@ -21,8 +21,8 @@ Revision History:
 
 #include "AlignmentFilter.h"
 
-Alignment::Alignment(unsigned location_, bool isRC_, int score_, string rname_, unsigned pos_, unsigned pos_end_, unsigned pos_original_, string transcript_id_, string gene_id_, bool isTranscriptome_) 
-    : location(location_), isRC(isRC_), score(score_), rname(rname_), pos(pos_), pos_end(pos_end_), pos_original(pos_original_), transcript_id(transcript_id_), gene_id(gene_id_), isTranscriptome(isTranscriptome_)
+Alignment::Alignment(unsigned location_, Direction direction_, int score_, int mapq_, string rname_, unsigned pos_, unsigned pos_end_, unsigned pos_original_, string transcript_id_, string gene_id_, bool isTranscriptome_) 
+    : location(location_), direction(direction_), score(score_), mapq(mapq_), rname(rname_), pos(pos_), pos_end(pos_end_), pos_original(pos_original_), transcript_id(transcript_id_), gene_id(gene_id_), isTranscriptome(isTranscriptome_)
 {
 
     //Build the hashkey for this alignment
@@ -31,14 +31,15 @@ Alignment::Alignment(unsigned location_, bool isRC_, int score_, string rname_, 
 }
 
 Alignment::Alignment(const Alignment &rhs)
-    : location(rhs.location), isRC(rhs.isRC), score(rhs.score), rname(rhs.rname), pos(rhs.pos), pos_end(rhs.pos_end), pos_original(rhs.pos_original), transcript_id(rhs.transcript_id), gene_id(rhs.gene_id), isTranscriptome(rhs.isTranscriptome), hashkey(rhs.hashkey)    
+    : location(rhs.location), direction(rhs.direction), score(rhs.score), mapq(rhs.mapq), rname(rhs.rname), pos(rhs.pos), pos_end(rhs.pos_end), pos_original(rhs.pos_original), transcript_id(rhs.transcript_id), gene_id(rhs.gene_id), isTranscriptome(rhs.isTranscriptome), hashkey(rhs.hashkey)    
 {}
 
 Alignment& Alignment::operator=(const Alignment &rhs) {
     if (this != &rhs) {
         location = rhs.location;
-        isRC = rhs.isRC;
+        direction = rhs.direction;
         score = rhs.score;
+        mapq = rhs.mapq;
         rname = rhs.rname;
         pos = rhs.pos;
         pos_end = rhs.pos_end;
@@ -51,8 +52,12 @@ Alignment& Alignment::operator=(const Alignment &rhs) {
     return *this;
 }
 
+bool Alignment::operator<(const Alignment &rhs) const {
+    return (score < rhs.score);
+}
+
 void Alignment::Print() {
-    printf("%u\t%d\t%d\t%s\t%u\t%s\t%d\n", location, isRC, score, rname.c_str(), pos, hashkey.c_str(), isTranscriptome);
+    printf("%u\t%d\t%d\t%d\t%s\t%u\t%s\t%d\n", location, direction, score, mapq, rname.c_str(), pos, hashkey.c_str(), isTranscriptome);
 }
 
 AlignmentPair::AlignmentPair(Alignment *align1_, Alignment *align2_, char flag_, bool is_unannotated_, bool is_backspliced_) 
@@ -63,9 +68,9 @@ AlignmentPair::AlignmentPair(Alignment *align1_, Alignment *align2_, char flag_,
     score = align1->score + align2->score;
 
     //If alignment1 is reverse complemented and alignment2 is not
-    if ((align1->isRC) && (!align2->isRC)) {
+    if ((align1->direction) && (!align2->direction)) {
         distance = align1->pos - align2->pos;
-    } else if ((!align1->isRC) && (align2->isRC)) {
+    } else if ((!align1->direction) && (align2->direction)) {
         distance = align2->pos - align1->pos;
     }
     
@@ -93,7 +98,7 @@ bool AlignmentPair::operator<(const AlignmentPair &rhs) const {
 }
 
 void AlignmentPair::Print() {
-    printf("Alignment distance: %d %d %d\n", distance, align1->isRC, align2->isRC);
+    printf("Alignment distance: %d %d %d\n", distance, align1->direction, align2->direction);
     align1->Print();
     align2->Print();
     printf("\n");
@@ -132,7 +137,7 @@ int AlignmentFilter::HashAlignment(Alignment& alignment, alignment_map& hashtabl
     }
 }
 
-int AlignmentFilter::AddAlignment(unsigned location, bool isRC, int score, bool isTranscriptome, bool isMate0) {
+int AlignmentFilter::AddAlignment(unsigned location, Direction direction, int score, int mapq, bool isTranscriptome, bool isMate0) {
 
     //Get the position and rname for this alignment
     string rname = "*";
@@ -189,7 +194,7 @@ int AlignmentFilter::AddAlignment(unsigned location, bool isRC, int score, bool 
     if (pos != 0) {
     
         //Create the Alignment
-        Alignment alignment(location, isRC, score, rname, pos, pos_end, pos_original, transcript_id, gene_id, isTranscriptome);
+        Alignment alignment(location, direction, score, mapq, rname, pos, pos_end, pos_original, transcript_id, gene_id, isTranscriptome);
         
         //Add the alignment to the hash_table
         if (isMate0) {
@@ -201,6 +206,70 @@ int AlignmentFilter::AddAlignment(unsigned location, bool isRC, int score, bool 
     }
     
     return 0;
+}
+
+        unsigned location = InvalidGenomeLocation;
+        Direction direction;
+        int score;
+        int mapq;
+
+AlignmentResult AlignmentFilter::FilterSingle(unsigned* location, Direction* direction, int* score, int* mapq, bool* isTranscriptome) {
+
+    std::vector<Alignment> alignments;
+
+    //Here we simply pick the best alignment and return it
+    for (alignment_map::iterator m0 = mate0.begin(); m0 != mate0.end(); ++m0) {
+    
+        //If this read passes the maxDist cutoff
+        if (m0->second.score > maxDist) {
+            continue;
+        }
+    
+        alignments.push_back(m0->second);
+    }
+    
+    //If there are no alignments, then return NotFound
+    if (alignments.size() == 0) {
+        *location = 0;
+        *direction = FORWARD;
+        *score = 0;
+        *mapq = 0;
+        *isTranscriptome = false;
+        return NotFound;
+        
+    } else if (alignments.size() == 1) {
+  
+        //Output the top one
+        *location = alignments[0].location;
+        *direction = alignments[0].direction;
+        *score = alignments[0].score;
+        //*mapq = alignments[0].mapq;
+        *mapq = 70;
+        *isTranscriptome = alignments[0].isTranscriptome;
+        return SingleHit;
+        
+    } else {
+        
+        //Sort the alignments
+        std::sort(alignments.begin(), alignments.end());
+        
+        //Output the top one
+        *location = alignments[0].location;
+        *direction = alignments[0].direction;
+        *score = alignments[0].score;
+        //*mapq = alignments[0].mapq;
+        *isTranscriptome = alignments[0].isTranscriptome;
+
+        unsigned diff = alignments[1].score - alignments[0].score;              
+        if (diff >= confDiff) {
+            *mapq = 70;
+            return SingleHit; 
+        
+        } else {
+            *mapq = 1;
+            return MultipleHits;    
+        }
+    }
 }
 
 int AlignmentFilter::Filter(PairedAlignmentResult* result) {
@@ -259,9 +328,9 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
             
             //Calculate distances between these two alignments
             int distance = 0;
-            if ((m0->second.isRC) && (!m1->second.isRC)) {
+            if ((m0->second.direction) && (!m1->second.direction)) {
                 distance = m0->second.pos - m1->second.pos;
-            } else if ((!m0->second.isRC) && (m1->second.isRC)) {
+            } else if ((!m0->second.direction) && (m1->second.direction)) {
                 distance = m1->second.pos - m0->second.pos;
             }
             
@@ -275,8 +344,8 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
             flag = 0;
              
             //Ensure one alignment is reverse complemented
-            if (((m0->second.isRC) && (m1->second.isRC)) ||
-                ((!m0->second.isRC) && (!m1->second.isRC))) {
+            if (((m0->second.direction) && (m1->second.direction)) ||
+                ((!m0->second.direction) && (!m1->second.direction))) {
                 flag |= 1 << NOT_REVERSE_COMPLIMENTED;
                 no_rc.push_back(AlignmentPair(&m1->second, &m0->second, flag, false, is_backspliced));
                 continue;
@@ -461,6 +530,12 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
         
         }
         
+        result->fromAlignTogether = false;
+        result->alignedAsPair = true;
+        //result->nanosInAlignTogether;
+        //result->nLVCalls;
+        //result->nSmallHits;
+        
         return 1;
     }
         
@@ -491,6 +566,12 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
                                       intrachromosomal_pairs[0].align2->rname, intrachromosomal_pairs[0].align2->pos, intrachromosomal_pairs[0].align2->pos_end, 
                                       string(read0->getId(), read0->getIdLength()));      
         }
+        
+        result->fromAlignTogether = false;
+        result->alignedAsPair = false;
+        //result->nanosInAlignTogether;
+        //result->nLVCalls;
+        //result->nSmallHits;
 
         return 1;
     }    
@@ -518,6 +599,12 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
                                       string(read0->getId(), read0->getIdLength()));
         }
         
+        result->fromAlignTogether = false;
+        result->alignedAsPair = false;
+        //result->nanosInAlignTogether;
+        //result->nLVCalls;
+        //result->nSmallHits;
+        
         return 1;
     }
         
@@ -529,6 +616,7 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
     result->location[0] = 0;
     result->direction[0] = FORWARD;
     result->score[0] = 0;
+    result->mapq[0] = 0;
     result->isTranscriptome[0] = false;
     
     result->flag[1] = 0;
@@ -536,7 +624,15 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
     result->location[1] = 0;
     result->direction[1] = FORWARD;
     result->score[1] = 0;
+    result->mapq[1] = 0;
     result->isTranscriptome[1] = false;
+    
+    result->fromAlignTogether = false;
+    result->alignedAsPair = false;
+    //result->nanosInAlignTogether;
+    //result->nLVCalls;
+    //result->nSmallHits;
+    
     return 0;    
           
 }
@@ -557,7 +653,7 @@ void AlignmentFilter::UnalignedRead(Read *read, unsigned minDiff) {
     int mapq;
     
     specialAligner->setReadId(0);
-    specialAligner->CharacterizeSeeds(read, &location, &direction, &score, &mapq, 0, 0, FORWARD, map);   
+    specialAligner->CharacterizeSeeds(read, &location, &direction, &score, &mapq, 0, 0, FORWARD, map, mapRC);   
     char flag = 0;
     
     //PrintMaps(map);
@@ -610,8 +706,8 @@ void AlignmentFilter::UnalignedRead(Read *read, unsigned minDiff) {
             //printf("1 [%s:%u-%u]\n", chr1.c_str(), start1, end1);
                                        
             //Create new alignments for each segment
-            Alignment *align0 = new Alignment(it->first, false, length0, chr0, start0, end0, start0, "transcript_id", "gene_id", false);
-            Alignment *align1 = new Alignment(it2->first, false, length1, chr1, start1, end1, start1, "transcript_id", "gene_id", false);
+            Alignment *align0 = new Alignment(it->first, false, length0, 0, chr0, start0, end0, start0, "transcript_id", "gene_id", false);
+            Alignment *align1 = new Alignment(it2->first, false, length1, 0, chr1, start1, end1, start1, "transcript_id", "gene_id", false);
                 
             //If they are on different chromosomes
             if (chr0.compare(chr1) != 0) {
@@ -647,7 +743,6 @@ void AlignmentFilter::UnalignedRead(Read *read, unsigned minDiff) {
         }
     }
      
-    /*
     for (seed_map::iterator it = mapRC.begin(); it != mapRC.end(); ++it) {    
         for (seed_map::iterator it2 = it; it2 != mapRC.end(); ++it2) {
         
@@ -696,8 +791,8 @@ void AlignmentFilter::UnalignedRead(Read *read, unsigned minDiff) {
             //printf("RC1 [%s:%u-%u]\n", chr1.c_str(), start1, end1);
         
             //Create new alignments for each segment
-            Alignment *align0 = new Alignment(it->first, true, length0, chr0, start0, end0, start0, "transcript_id", "gene_id", false);
-            Alignment *align1 = new Alignment(it2->first, true, length1, chr1, start1, end1, start1, "transcript_id", "gene_id", false);
+            Alignment *align0 = new Alignment(it->first, true, length0, 0, chr0, start0, end0, start0, "transcript_id", "gene_id", false);
+            Alignment *align1 = new Alignment(it2->first, true, length1, 0, chr1, start1, end1, start1, "transcript_id", "gene_id", false);
                  
             //If they are on different chromosomes
             if (chr0.compare(chr1) != 0) {
@@ -732,7 +827,6 @@ void AlignmentFilter::UnalignedRead(Read *read, unsigned minDiff) {
             }         
         }
     }
-    */
     
     //Now we go through each of the three sets, prioritizing the cis-gene model, as before
     if (intragene_unannotated_splices.size() > 0) {
@@ -816,7 +910,7 @@ bool AlignmentFilter::ProcessSplices(std::vector<AlignmentPair> &pairs, unsigned
 
 void AlignmentFilter::FindPartialMatches(PairedAlignmentResult *result, AlignmentPair &pair) {
 
-    seed_map map0, map1;
+    seed_map map0, mapRC0, map1, mapRC1;
             
     //Temp variables, but may be able to use them later
     unsigned location = InvalidGenomeLocation;
@@ -825,10 +919,10 @@ void AlignmentFilter::FindPartialMatches(PairedAlignmentResult *result, Alignmen
     int mapq;
     
     specialAligner->setReadId(0);
-    specialAligner->CharacterizeSeeds(read0, &location, &direction, &score, &mapq, 0, 0, FORWARD, map0);
+    specialAligner->CharacterizeSeeds(read0, &location, &direction, &score, &mapq, 0, 0, FORWARD, map0, mapRC0);
 
     specialAligner->setReadId(1); 
-    specialAligner->CharacterizeSeeds(read1, &location, &direction, &score, &mapq, 0, 0, FORWARD, map1);
+    specialAligner->CharacterizeSeeds(read1, &location, &direction, &score, &mapq, 0, 0, FORWARD, map1, mapRC1);
     
     //Print these maps
     //PrintMaps(map0);
@@ -849,13 +943,11 @@ void AlignmentFilter::FindPartialMatches(PairedAlignmentResult *result, Alignmen
         }
     }
     
-    /*
     for (seed_map::iterator it = mapRC0.begin(); it != mapRC0.end(); ++it) {
         if (it->second.size() >= min_size) {
             locs0.push_back(it->first + (read0->getDataLength() - *(it->second.rbegin())));
         }
     }
-    */
     
     for (seed_map::iterator it = map1.begin(); it != map1.end(); ++it) {
         if (it->second.size() >= min_size) {
@@ -863,13 +955,11 @@ void AlignmentFilter::FindPartialMatches(PairedAlignmentResult *result, Alignmen
         }
     }
     
-    /*
     for (seed_map::iterator it = mapRC1.begin(); it != mapRC1.end(); ++it) {
         if (it->second.size() >= min_size) {
             locs1.push_back(it->first + (read1->getDataLength() - *(it->second.rbegin())));
         }
     }
-    */
        
     //Now loop over the possible locations, finding valid pairs
     for (vector<unsigned>::iterator it0 = locs0.begin(); it0 != locs0.end(); ++it0) {
@@ -926,32 +1016,38 @@ void AlignmentFilter::ProcessPairs(PairedAlignmentResult* result, std::vector<Al
         //Unique high quality hit
         result->status[0] = SingleHit;
         result->location[0] = pairs[0].align1->location;
-        result->direction[0] = pairs[0].align1->isRC;
+        result->direction[0] = pairs[0].align1->direction;
         result->score[0] = pairs[0].align1->score;
+        //result->mapq[0] = pairs[0].align1->mapq;
+        result->mapq[0] = 70;
         result->isTranscriptome[0] = pairs[0].align1->isTranscriptome;
         result->flag[0] = pairs[0].flag;
         
         result->status[1] = SingleHit;
         result->location[1] = pairs[0].align2->location;
-        result->direction[1] = pairs[0].align2->isRC;
+        result->direction[1] = pairs[0].align2->direction;
         result->score[1] = pairs[0].align2->score;
+        //result->mapq[1] = pairs[0].align2->mapq;
+        result->mapq[1] = 70;
         result->isTranscriptome[1] = pairs[0].align2->isTranscriptome;
         result->flag[1] = pairs[0].flag;
-            
+        
     } else {
          
         //Sort the scores by score, using operator< in AlignmentPair class
         sort(pairs.begin(), pairs.end());
                          
         result->location[0] = pairs[0].align1->location;
-        result->direction[0] = pairs[0].align1->isRC;
+        result->direction[0] = pairs[0].align1->direction;
         result->score[0] = pairs[0].align1->score;
+        //result->mapq[0] = pairs[0].align1->mapq;
         result->isTranscriptome[0] = pairs[0].align1->isTranscriptome;
         result->flag[0] = pairs[0].flag;
         
         result->location[1] = pairs[0].align2->location;
-        result->direction[1] = pairs[0].align2->isRC;
+        result->direction[1] = pairs[0].align2->direction;
         result->score[1] = pairs[0].align2->score;
+        //result->mapq[1] = pairs[0].align2->mapq;
         result->isTranscriptome[1] = pairs[0].align2->isTranscriptome;
         result->flag[1] = pairs[0].flag;
     
@@ -961,19 +1057,23 @@ void AlignmentFilter::ProcessPairs(PairedAlignmentResult* result, std::vector<Al
         if (diff >= confDiff) {
         
             //Unique high quality hit
+            result->mapq[0] = 70;
+            result->mapq[1] = 70;
             result->status[0] = SingleHit;
             result->status[1] = SingleHit;   
         
         } else {
 
             //Multiple hits
+            result->mapq[0] = 1;
+            result->mapq[1] = 1;
             result->status[0] = MultipleHits;
             result->status[1] = MultipleHits;           
         }  
     }
 }
 
-void AlignmentFilter::PrintMaps(seed_map &map) {
+void AlignmentFilter::PrintMaps(seed_map& map, seed_map& mapRC) {
 
     printf("READ\n");
     for (seed_map::iterator it = map.begin(); it != map.end(); ++it) {
@@ -988,7 +1088,21 @@ void AlignmentFilter::PrintMaps(seed_map &map) {
         for (std::set<unsigned>::iterator it2 = it->second.begin(); it2 != it->second.end(); ++it2) {
             printf("%u\n", *it2);
         }   
+    }
+    
+    printf("READRC\n");
+    for (seed_map::iterator it = mapRC.begin(); it != mapRC.end(); ++it) {
+    
+        printf("Pos: %u\n", it->first);
+    
+        const Genome::Piece *piece0 = genome->getPieceAtLocation(it->first);
+        const char* chr0 = piece0->name;
+        unsigned pos0 = it->first - piece0->beginningOffset + 1; 
         
+        printf("Pos: %s %u %u\n", chr0, pos0, it->second.size());
+        for (std::set<unsigned>::iterator it2 = it->second.begin(); it2 != it->second.end(); ++it2) {
+            printf("%u\n", *it2);
+        }   
     }
 }
 

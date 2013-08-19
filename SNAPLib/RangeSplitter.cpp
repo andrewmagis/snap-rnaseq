@@ -115,6 +115,7 @@ RangeSplittingReadSupplierGenerator::RangeSplittingReadSupplierGenerator(
 ReadSupplier *
 RangeSplittingReadSupplierGenerator::generateNewReadSupplier()
 {
+
     _int64 rangeStart, rangeLength;
     if (!splitter->getNextRange(&rangeStart, &rangeLength)) {
         return NULL;

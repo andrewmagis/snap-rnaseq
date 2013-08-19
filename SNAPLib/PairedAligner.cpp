@@ -289,7 +289,7 @@ AlignerOptions* PairedAlignerContext::parseOptions(int i_argc, const char **i_ar
         "   where <input file(s)> is a list of files to process.  FASTQ\n"
         "   files must come in pairs, since each read end is in a separate file.");
     options->extra = extension->extraOptions();
-    if (argc < 2) {
+    if (argc < 4) {
         options->usage();
     }
 
@@ -438,7 +438,7 @@ void PairedAlignerContext::runIterationThread()
     size_t g_memoryPoolSize = IntersectingPairedEndAligner::getBigAllocatorReservation(index, intersectingAlignerMaxHits, maxReadSize, index->getSeedLength(), 
                                                                 numSeedsFromCommandLine, seedCoverage, maxDist, extraSearchDepth);
     size_t t_memoryPoolSize = IntersectingPairedEndAligner::getBigAllocatorReservation(transcriptome, intersectingAlignerMaxHits, maxReadSize, transcriptome->getSeedLength(), 
-                                                                numSeedsFromCommandLine, seedCoverage, maxDist, extraSearchDepth);
+                                                               numSeedsFromCommandLine, seedCoverage, maxDist, extraSearchDepth);
 
     BigAllocator *g_allocator = new BigAllocator(g_memoryPoolSize);
     BigAllocator *t_allocator = new BigAllocator(t_memoryPoolSize);
@@ -458,7 +458,7 @@ void PairedAlignerContext::runIterationThread()
         forceSpacing,
         extraSearchDepth,
         g_intersectingAligner);
-        
+     
     IntersectingPairedEndAligner *t_intersectingAligner = new IntersectingPairedEndAligner(transcriptome, maxReadSize, maxHits, maxDist, numSeedsFromCommandLine, 
                                                                 seedCoverage, minSpacing, maxSpacing, intersectingAlignerMaxHits, extraSearchDepth, t_allocator);
     
@@ -545,27 +545,22 @@ void PairedAlignerContext::runIterationThread()
             stats->usefulReads += (useful0 && useful1) ? 2 : 1;
         }
         
-        /* 
-        ADD QUALITY FILTERING CODE HERE
-        */
-
         PairedAlignmentResult result;
         result.isTranscriptome[0] = false;
         result.isTranscriptome[1] = false;
         
         //Make users setting
         unsigned confDiff = 2;
-        
         AlignmentFilter filter(read0, read1, index->getGenome(), transcriptome->getGenome(), gtf, minSpacing, maxSpacing, confDiff, options->maxDist.start, index->getSeedLength(), partialAligner);
 
         //Align to transcriptome
         t_aligner->align(read0, read1, &result);
-        filter.AddAlignment(result.location[0], result.direction[0], result.score[0], true, false);
-        filter.AddAlignment(result.location[1], result.direction[1], result.score[1], true, true);
+        filter.AddAlignment(result.location[0], result.direction[0], result.score[0], result.mapq[0], true, false);
+        filter.AddAlignment(result.location[1], result.direction[1], result.score[1], result.mapq[1], true, true);
        
         g_aligner->align(read0, read1, &result);
-        filter.AddAlignment(result.location[0], result.direction[0], result.score[0], false, false);
-        filter.AddAlignment(result.location[1], result.direction[1], result.score[1], false, true);
+        filter.AddAlignment(result.location[0], result.direction[0], result.score[0], result.mapq[0], false, false);
+        filter.AddAlignment(result.location[1], result.direction[1], result.score[1], result.mapq[1], false, true);
        
         //Perform the primary filtering of all aligned reads
         unsigned status = filter.Filter(&result);
@@ -591,16 +586,21 @@ void PairedAlignerContext::runIterationThread()
 
         updateStats((PairedAlignerStats*) stats, read0, read1, &result);
     }
+    
+    //Process all the intervals and read counts
+    gtf->AnalyzeReadIntervals();
+    gtf->WriteReadCounts();
 
     stats->lvCalls = g_aligner->getLocationsScored();
 
-    delete partialAligner;
     delete g_aligner;
     delete t_aligner;
     delete supplier;
 
     g_intersectingAligner->~IntersectingPairedEndAligner();
     t_intersectingAligner->~IntersectingPairedEndAligner();
+    partialAligner->~BaseAligner();
+        
     delete g_allocator;
     delete t_allocator;
     delete p_allocator;

@@ -73,10 +73,6 @@ AlignerContext::~AlignerContext()
     }
     
     if (NULL != gtf) {
-    
-        //REALLY BAD PLACE FOR THIS
-        gtf->PrintGeneAssociations();
-        gtf->WriteReadCounts();
         delete gtf;
     }
 
@@ -206,9 +202,8 @@ AlignerContext::initialize()
         transcriptome = t_index;
     }
     
-    
     //Create GTFReader and load the annotation
-    gtf = new GTFReader();
+    gtf = new GTFReader(options->outputFileTemplate);
     gtf->Load(options->annotation);
     
     if (options->outputFileTemplate != NULL && (options->maxHits.size() > 1 || options->maxDist.size() > 1)) {
