@@ -997,7 +997,7 @@ int GTFReader::Parse(string line) {
     }
     
     string value;
-    if (feature->GetAttribute("gene_id", value) || feature->GetAttribute("Parent", value)) {
+    if (!feature->GetAttribute("gene_id", value) && !feature->GetAttribute("Parent", value)) {
         printf("Warning: annotation file missing 'gene_id' (GTF) or 'Parent' (GFF3) for exon entry\n");
     }
         
