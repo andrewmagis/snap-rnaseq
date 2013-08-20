@@ -586,10 +586,6 @@ void PairedAlignerContext::runIterationThread()
         updateStats((PairedAlignerStats*) stats, read0, read1, &result);
     }
     
-    //Process all the intervals and read counts
-    gtf->AnalyzeReadIntervals();
-    gtf->WriteReadCounts();
-
     stats->lvCalls = g_aligner->getLocationsScored();
 
     delete g_aligner;

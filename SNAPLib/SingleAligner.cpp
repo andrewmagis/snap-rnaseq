@@ -254,10 +254,6 @@ SingleAlignerContext::runIterationThread()
         updateStats(stats, read, result, location, score, mapq, wasError);
     }
     
-    //Process all the intervals and read counts
-    //gtf->PrintGeneAssociations(); //no intervals for single end reads
-    gtf->WriteReadCounts();
-
     g_aligner->~BaseAligner(); // This calls the destructor without calling operator delete, allocator owns the memory.
     t_aligner->~BaseAligner(); 
  
