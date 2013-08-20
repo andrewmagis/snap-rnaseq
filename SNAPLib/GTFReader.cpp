@@ -26,6 +26,7 @@ Revision History:
 //Source includes
 #include "GTFReader.h"
 #include "Compat.h"
+#include "exit.h"
 
 bool IntervalNodeSort(const Interval<ReadInterval*> &interval0, const Interval<ReadInterval*> &interval1) { 
     return interval0.value->Start() < interval1.value->Start(); 
@@ -525,7 +526,7 @@ void ReadIntervalMap::WriteSplicedMatePairs(ofstream &logfile, ofstream &readfil
 GTFFeature::GTFFeature(string line) 
     : read_count(0) 
 {
-                
+
     char* line_c = (char*)line.c_str(); 
     char *pch;
     pch = strtok(line_c,"'\t'"); chr = pch;
@@ -551,6 +552,7 @@ GTFFeature::GTFFeature(string line)
             //Remove any quotes or spaces from each string
             value.erase(remove(value.begin(), value.end(), '\"' ), value.end());
             attributes.insert(std::map<string,string>::value_type(key, value));
+        
         }
     }
     
@@ -565,8 +567,7 @@ GTFFeature::GTFFeature(string line)
         gene_id = value;
     
     } else {
-        printf("Cannot find gene identifiers 'gene_id' (GTF) or 'Parent' (GFF3) in annotation file\n");
-        exit(1);
+        gene_id = "Unknown";
     } 
     
     //If transcript_id exists
@@ -995,6 +996,11 @@ int GTFReader::Parse(string line) {
         return 1;
     }
     
+    string value;
+    if (feature->GetAttribute("gene_id", value) || feature->GetAttribute("Parent", value)) {
+        printf("Warning: annotation file missing 'gene_id' (GTF) or 'Parent' (GFF3) for exon entry\n");
+    }
+        
     //We don't try to find features, we just add them to the vector and to the tree
     features.push_back(feature);
     

@@ -550,8 +550,7 @@ void PairedAlignerContext::runIterationThread()
         result.isTranscriptome[1] = false;
         
         //Make users setting
-        unsigned confDiff = 2;
-        AlignmentFilter filter(read0, read1, index->getGenome(), transcriptome->getGenome(), gtf, minSpacing, maxSpacing, confDiff, options->maxDist.start, index->getSeedLength(), partialAligner);
+        AlignmentFilter filter(read0, read1, index->getGenome(), transcriptome->getGenome(), gtf, minSpacing, maxSpacing, options->confDiff, options->maxDist.start, index->getSeedLength(), partialAligner);
 
         //Align to transcriptome
         t_aligner->align(read0, read1, &result);

@@ -51,9 +51,7 @@ static void usage()
             "\nTODO:\n"
             "0. Modify Makefile to fix g++43 to g++\n"
             "0. Figure out way to add UINT32_MAX and UINT64_MAX (Compat.h)\n"
-            "2. amountRemaining for queries\n"
-            "4. specialAligner\n"
-            "6. single end reads haha\n"); 
+            "2. amountRemaining for queries\n"); 
             
     soft_exit(1);
 }

@@ -44,7 +44,7 @@ static const double DEFAULT_SLACK = 0.3;
 static void tusage()
 {
     fprintf(stderr,
-            "Usage: snap trans <input.gtf> <input.fa> <output-dir> [<options>]\n"
+            "Usage: snap-rna transcriptome <input.gtf> <input.fa> <output-dir> [<options>]\n"
             "Options:\n"
             "  -s           Seed size (default: %d)\n"
             "  -h           Hash table slack (default: %.1f)\n"
@@ -53,16 +53,17 @@ static void tusage()
             "               Larger numbers use more memory but work better with more repetitive genomes.  Smaller numbers reduce the memory\n"
             "               footprint, but may cause the index build to fail.  Making -O larger than necessary will not affect the resuting\n"
             "               index.  Factor must be between 1 and 1000, and the default is 40.\n"
-            " -tMaxThreads  Specify the maximum number of threads to use. Default is the number of cores\n",
+            " -tMaxThreads  Specify the maximum number of threads to use. Default is the number of cores\n"
+            " -HHistogramFile   Build a histogram of seed popularity.  This is just for information, it's not used by SNAP.\n",
             DEFAULT_SEED_SIZE,
             DEFAULT_SLACK);
-    exit(1);
+    soft_exit(1);
 }
 
 static void usage()
 {
     fprintf(stderr,
-            "Usage: snap index <input.fa> <output-dir> [<options>]\n"
+            "Usage: snap-rna index <input.fa> <output-dir> [<options>]\n"
             "Options:\n"
             "  -s               Seed size (default: %d)\n"
             "  -h               Hash table slack (default: %.1f)\n"

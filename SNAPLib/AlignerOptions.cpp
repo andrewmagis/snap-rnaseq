@@ -63,6 +63,7 @@ AlignerOptions::AlignerOptions(
     defaultReadGroup("FASTQ"),
     seedCountSpecified(false),
     numSeedsFromCommandLine(0),
+    confDiff(2),
     minPercentAbovePhred(90.0),
     minPhred(20),
     phredOffset(33)
@@ -99,7 +100,7 @@ AlignerOptions::usageMessage()
         "  -n   number of seeds to use per read\n"
         "  -sc  Seed coverage (i.e., readSize/seedSize).  Floating point.  Exclusive with -n.  (default: %lf)\n"
         "  -h   maximum hits to consider per seed (default: %d)\n"
-        "  -c   Deprecated parameter; this is ignored.  Consumes one extra arg.\n"
+        "  -c   confidence threshold (default: %u)\n"
         "  -a   Deprecated parameter; this is ignored.  Consumes one extra arg.\n"
         "  -t   number of threads (default is one per core)\n"
         "  -b   bind each thread to its processor (off by default)\n"
@@ -140,6 +141,7 @@ AlignerOptions::usageMessage()
             maxDist.start,
             seedCoverage,
             maxHits.start,
+            confDiff,
             minPercentAbovePhred,
             minPhred,
             phredOffset);
@@ -204,8 +206,9 @@ AlignerOptions::parse(
             n++;
             return true;
         }
-    } else if (strcmp(argv[n], "-c") == 0) { // conf diff is deprecated, but we just ignore it rather than throwing an error.
+    } else if (strcmp(argv[n], "-c") == 0) {
         if (n + 1 < argc) {
+            confDiff = atoi(argv[n+1]);
             n++;
             return true;
         }

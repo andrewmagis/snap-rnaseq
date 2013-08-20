@@ -60,7 +60,7 @@ SingleAlignerContext::parseOptions(
     version = i_version;
 
     AlignerOptions* options = new AlignerOptions(
-        "snap single <genome-dir> <transcriptome-dir> <annotation> <inputFile(s)> [<options>]"
+        "snap-rna single <genome-dir> <transcriptome-dir> <annotation> <inputFile(s)> [<options>]"
 		"   where <input file(s)> is a list of files to process.\n",false);
     options->extra = extension->extraOptions();
     if (argc < 4) {
@@ -231,8 +231,7 @@ SingleAlignerContext::runIterationThread()
         bool isTranscriptome = false;
         char flag = 0;
 
-        unsigned confDiff = 2;
-        AlignmentFilter filter(NULL, read, index->getGenome(), transcriptome->getGenome(), gtf, 0, 0, confDiff, options->maxDist.start, index->getSeedLength(), g_aligner);
+        AlignmentFilter filter(NULL, read, index->getGenome(), transcriptome->getGenome(), gtf, 0, 0, options->confDiff, options->maxDist.start, index->getSeedLength(), g_aligner);
 
         AlignmentResult t_result = t_aligner->AlignRead(read, &location, &direction, &score, &mapq);
         t_allocator->checkCanaries();
