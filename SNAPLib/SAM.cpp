@@ -1051,7 +1051,7 @@ SAMFormat::writeRead(
             //Vector of tokens from CIGAR string for Transcriptome conversion
             cigar = computeCigarString(transcriptome, lv, cigarNew, cigarBufSize, cigarBufWithClipping, cigarBufWithClippingSize, 
                                        clippedData, clippedLength, basesClippedBefore, basesClippedAfter,
-                                       tLocation, direction, useM, &editDistance, tokens);
+                                       tlocation, direction, useM, &editDistance, tokens);
                           
             //We need the pieceName for conversion             
             const Genome::Piece *transcriptomePiece = transcriptome->getPieceAtLocation(tlocation);
