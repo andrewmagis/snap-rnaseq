@@ -43,7 +43,7 @@ public:
 
     virtual bool writeHeader(const ReaderContext& context, bool sorted, int argc, const char **argv, const char *version, const char *rgLine);
 
-    virtual bool writeRead(Read *read, AlignmentResult result, int mapQuality, unsigned genomeLocation, Direction direction, bool isTranscriptome, char flag);
+    virtual bool writeRead(Read *read, AlignmentResult result, int mapQuality, unsigned genomeLocation, Direction direction, bool isTranscriptome, unsigned tlocation);
 
     virtual bool writePair(Read *read0, Read *read1, PairedAlignmentResult *result);
 
@@ -95,7 +95,7 @@ SimpleReadWriter::writeRead(
     unsigned genomeLocation,
     Direction direction,
     bool isTranscriptome, 
-    char flag)
+    unsigned tlocation)
 {
 
     char* buffer;
@@ -108,7 +108,7 @@ SimpleReadWriter::writeRead(
         if (! writer->getBuffer(&buffer, &size)) {
             return false;
         }
-        if (format->writeRead(genome, transcriptome, gtf, &lvc, buffer, size, &used, read->getIdLength(), read, result, mapQuality, genomeLocation, direction, isTranscriptome, flag)) {
+        if (format->writeRead(genome, transcriptome, gtf, &lvc, buffer, size, &used, read->getIdLength(), read, result, mapQuality, genomeLocation, direction, isTranscriptome, tlocation)) {
             _ASSERT(used <= size);
 
         if (used > 0xffffffff) {
@@ -178,14 +178,14 @@ SimpleReadWriter::writePair(
 
         bool writesFit = format->writeRead(genome, transcriptome, gtf, &lvc, buffer, size, &sizeUsed[first],
                             idLengths[first], reads[first], result->status[first], result->mapq[first], locations[first], result->direction[first], 
-                            result->isTranscriptome[first], result->flag[first], true, true,
-                            reads[second], result->status[second], locations[second], result->direction[second], result->isTranscriptome[second], result->flag[second]);
+                            result->isTranscriptome[first], result->tlocation[first], true, true,
+                            reads[second], result->status[second], locations[second], result->direction[second], result->isTranscriptome[second], result->tlocation[second]);
 
         if (writesFit) {
             writesFit = format->writeRead(genome, transcriptome, gtf, &lvc, buffer + sizeUsed[first], size - sizeUsed[first], &sizeUsed[second],
                 idLengths[second], reads[second], result->status[second], result->mapq[second], locations[second], result->direction[second], 
-                result->isTranscriptome[second], result->flag[second], true, false,
-                reads[first], result->status[first], locations[first], result->direction[first], result->isTranscriptome[first], result->flag[first]);
+                result->isTranscriptome[second], result->tlocation[second], true, false,
+                reads[first], result->status[first], locations[first], result->direction[first], result->isTranscriptome[first], result->tlocation[first]);
             if (writesFit) {
                 break;
             }

@@ -612,10 +612,10 @@ public:
         const Genome * genome, const Genome * transcriptome, const GTFReader * gtf,
         LandauVishkinWithCigar * lv, char * buffer, size_t bufferSpace, 
         size_t * spaceUsed, size_t qnameLen, Read * read, AlignmentResult result, 
-        int mapQuality, unsigned genomeLocation, Direction direction, bool isTranscriptome = false, char flag = 0,
+        int mapQuality, unsigned genomeLocation, Direction direction, bool isTranscriptome = false, unsigned tlocation = 0,
         bool hasMate = false, bool firstInPair = false, Read * mate = NULL, 
         AlignmentResult mateResult = NotFound, unsigned mateLocation = 0, Direction mateDirection = FORWARD,
-        bool mateIsTranscriptome = false, char mateFlag = 0) const; 
+        bool mateIsTranscriptome = false, unsigned mateTlocation = 0) const; 
 
 private:
     static const char * computeCigarString(const Genome * genome, LandauVishkinWithCigar * lv,
@@ -909,21 +909,27 @@ getSAMData(
         
         } else {
         
+            const Genome::Piece *piece = genome->getPieceAtLocation(genomeLocation);
+            pieceName = piece->name;
+            pieceIndex = (int)(piece - genome->getPieces());
+            positionInPiece = genomeLocation - piece->beginningOffset + 1; // SAM is 1-based
+
+            /*
             const Genome::Piece *piece = transcriptome->getPieceAtLocation(genomeLocation);
             pieceName = piece->name;            
             positionInPiece = genomeLocation - piece->beginningOffset + 1; // SAM is 1-based
-            
-            //Get pieceIndex for genome
-            unsigned offset;
-            genome->getOffsetOfPiece(pieceName, &offset);
-            const Genome::Piece *genome_piece = genome->getPieceAtLocation(offset);
-            pieceIndex = (int)(genome_piece - genome->getPieces());
         
             //Must convert to genomic coordinates
             positionInPiece = gtf->GetTranscript(pieceName).GenomicPosition(positionInPiece, 0);
             pieceName = gtf->GetTranscript(pieceName).Chr().c_str();
                   
-        }
+            //Get pieceIndex for genome
+            unsigned offset;
+            genome->getOffsetOfPiece(pieceName, &offset);
+            const Genome::Piece *genome_piece = genome->getPieceAtLocation(offset);
+            pieceIndex = (int)(genome_piece - genome->getPieces());
+            */
+	}
                 
         mapQuality = max(0, min(70, mapQuality));
     } else {
@@ -945,21 +951,27 @@ getSAMData(
                 matePositionInPiece = mateLocation - matePiece->beginningOffset + 1;
                 
             } else {
-            
+
+                const Genome::Piece *matePiece = genome->getPieceAtLocation(mateLocation);
+                matePieceName = matePiece->name;
+                matePieceIndex = (int)(matePiece - genome->getPieces());
+                matePositionInPiece = mateLocation - matePiece->beginningOffset + 1;
+
+ 		/*           
                 const Genome::Piece *matePiece = transcriptome->getPieceAtLocation(mateLocation);
                 matePieceName = matePiece->name;
                 matePositionInPiece = mateLocation - matePiece->beginningOffset + 1;
+            
+                //Must convert to genomic coordinates
+                matePositionInPiece = gtf->GetTranscript(matePieceName).GenomicPosition(matePositionInPiece, 0);
+                matePieceName = gtf->GetTranscript(matePieceName).Chr().c_str();
             
                 //Get pieceIndex for genome
                 unsigned offset;
                 genome->getOffsetOfPiece(matePieceName, &offset);
                 const Genome::Piece *genome_piece = genome->getPieceAtLocation(offset);
                 matePieceIndex = (int)(genome_piece - genome->getPieces());
-            
-                //Must convert to genomic coordinates
-                matePositionInPiece = gtf->GetTranscript(matePieceName).GenomicPosition(matePositionInPiece, 0);
-                matePieceName = gtf->GetTranscript(matePieceName).Chr().c_str();
-            
+		*/
             }
 
             if (mateDirection == RC) {
@@ -1030,7 +1042,7 @@ SAMFormat::writeRead(
     unsigned genomeLocation,
     Direction direction,
     bool isTranscriptome,
-    char flag,
+    unsigned tlocation,
     bool hasMate,
     bool firstInPair,
     Read * mate, 
@@ -1038,7 +1050,7 @@ SAMFormat::writeRead(
     unsigned mateLocation,
     Direction mateDirection,
     bool mateIsTranscriptome,
-    char mateFlag) const
+    unsigned mateTlocation) const
 {
     const int MAX_READ = MAX_READ_LENGTH;
     const int cigarBufSize = MAX_READ * 2;
@@ -1094,9 +1106,9 @@ SAMFormat::writeRead(
                                        genomeLocation, direction, useM, &editDistance, tokens);
                           
             //We need the pieceName for conversion             
-            const Genome::Piece *transcriptomePiece = transcriptome->getPieceAtLocation(genomeLocation);
+            const Genome::Piece *transcriptomePiece = transcriptome->getPieceAtLocation(tlocation);
             const char* transcriptomePieceName = transcriptomePiece->name;
-            unsigned transcriptomePositionInPiece = genomeLocation - transcriptomePiece->beginningOffset + 1; // SAM is 1-based
+            unsigned transcriptomePositionInPiece = tlocation - transcriptomePiece->beginningOffset + 1; // SAM is 1-based
                                        
             //Insert splice junction
             //cigar = convertTranscriptomeToGenome(gtf, tokens, transcriptomePieceName, transcriptomePositionInPiece, cigarBufWithClipping, cigarBufWithClippingSize);

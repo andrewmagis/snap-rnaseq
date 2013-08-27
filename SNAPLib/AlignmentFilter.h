@@ -105,7 +105,7 @@ class AlignmentFilter {
         //Functions
         int AddAlignment(unsigned location, Direction direction, int score, int mapq, bool isTranscriptome, bool isMate0); 
         int Filter(PairedAlignmentResult* result);
-        AlignmentResult FilterSingle(unsigned* location, Direction* direction, int* score, int* mapq, bool* isTranscriptome);   
+        AlignmentResult FilterSingle(unsigned* location, Direction* direction, int* score, int* mapq, bool* isTranscriptome, unsigned* tlocation);   
         
     protected:
     

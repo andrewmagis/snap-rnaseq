@@ -78,9 +78,6 @@ int getpagesize();
 #include <assert.h>
 #include <float.h>
 
-#define UINT32_MAX  ((uint32_t)-1)
-#define UINT64_MAX  ((uint64_t)-1)
-
 #ifdef __linux__
 #include <sched.h>  // For sched_setaffinity
 #endif

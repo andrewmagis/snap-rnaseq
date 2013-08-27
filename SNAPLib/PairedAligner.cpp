@@ -563,7 +563,7 @@ void PairedAlignerContext::runIterationThread()
        
         //Perform the primary filtering of all aligned reads
         unsigned status = filter.Filter(&result);
-        
+
         if (forceSpacing && isOneLocation(result.status[0]) != isOneLocation(result.status[1])) {
             // either both align or neither do
             result.status[0] = result.status[1] = NotFound;

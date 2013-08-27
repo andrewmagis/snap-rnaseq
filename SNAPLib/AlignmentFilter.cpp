@@ -213,7 +213,7 @@ int AlignmentFilter::AddAlignment(unsigned location, Direction direction, int sc
         int score;
         int mapq;
 
-AlignmentResult AlignmentFilter::FilterSingle(unsigned* location, Direction* direction, int* score, int* mapq, bool* isTranscriptome) {
+AlignmentResult AlignmentFilter::FilterSingle(unsigned* location, Direction* direction, int* score, int* mapq, bool* isTranscriptome, unsigned* tlocation) {
 
     std::vector<Alignment> alignments;
 
@@ -235,12 +235,21 @@ AlignmentResult AlignmentFilter::FilterSingle(unsigned* location, Direction* dir
         *score = 0;
         *mapq = 0;
         *isTranscriptome = false;
+        *tlocation = 0;
         return NotFound;
         
     } else if (alignments.size() == 1) {
-  
-        //Output the top one
-        *location = alignments[0].location;
+ 
+	if (alignments[0].isTranscriptome) {
+          *tlocation = alignments[0].location;
+          unsigned offset;
+          genome->getOffsetOfPiece(alignments[0].rname.c_str(), &offset);
+          offset += alignments[0].pos;
+          *location = offset;
+	} else {
+	  *location = alignments[0].location;
+	}
+
         *direction = alignments[0].direction;
         *score = alignments[0].score;
         //*mapq = alignments[0].mapq;
@@ -253,8 +262,15 @@ AlignmentResult AlignmentFilter::FilterSingle(unsigned* location, Direction* dir
         //Sort the alignments
         std::sort(alignments.begin(), alignments.end());
         
-        //Output the top one
-        *location = alignments[0].location;
+        if (alignments[0].isTranscriptome) {
+          *tlocation = alignments[0].location;
+          unsigned offset;
+          genome->getOffsetOfPiece(alignments[0].rname.c_str(), &offset);
+          offset += alignments[0].pos;
+          *location = offset;
+        } else {
+          *location = alignments[0].location;
+        }
         *direction = alignments[0].direction;
         *score = alignments[0].score;
         //*mapq = alignments[0].mapq;
@@ -611,7 +627,7 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
     //If we do not have any gene pairs or nogene pairs, for now we will 
     //return a bad alignment
 
-    result->flag[0] = 0;
+    result->tlocation[0] = 0;
     result->status[0] = NotFound;
     result->location[0] = 0;
     result->direction[0] = FORWARD;
@@ -619,7 +635,7 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
     result->mapq[0] = 0;
     result->isTranscriptome[0] = false;
     
-    result->flag[1] = 0;
+    result->tlocation[1] = 0;
     result->status[1] = NotFound;  
     result->location[1] = 0;
     result->direction[1] = FORWARD;
@@ -1013,43 +1029,99 @@ void AlignmentFilter::ProcessPairs(PairedAlignmentResult* result, std::vector<Al
 
     if (pairs.size() == 1) {
            
+        //First we convert the transcriptome coordinates back to a genomic position, for sorting
+      if (pairs[0].align1->isTranscriptome) {
+
+        result->tlocation[0] = pairs[0].align1->location;
+        unsigned offset;
+        genome->getOffsetOfPiece(pairs[0].align1->rname.c_str(), &offset);
+        offset += pairs[0].align1->pos;
+        result->location[0] = offset;
+
+	//printf("Location: %u tLocation: %u\n", result->location[0], result->tlocation[0]);
+
+      } else {
+        result->tlocation[0] = 0;
+	result->location[0] = pairs[0].align1->location;
+      }
+
+      if (pairs[0].align2->isTranscriptome) {
+
+        result->tlocation[1] = pairs[0].align2->location;
+        unsigned offset;
+        genome->getOffsetOfPiece(pairs[0].align2->rname.c_str(), &offset);
+        offset += pairs[0].align2->pos;
+        result->location[1] = offset;
+
+        //printf("Location: %u tLocation: %u\n", result->location[1], result->tlocation[1]);
+        
+      } else {
+        result->tlocation[1] = 0;
+        result->location[1] = pairs[0].align2->location;
+      }
+
+
         //Unique high quality hit
         result->status[0] = SingleHit;
-        result->location[0] = pairs[0].align1->location;
         result->direction[0] = pairs[0].align1->direction;
         result->score[0] = pairs[0].align1->score;
         //result->mapq[0] = pairs[0].align1->mapq;
         result->mapq[0] = 70;
         result->isTranscriptome[0] = pairs[0].align1->isTranscriptome;
-        result->flag[0] = pairs[0].flag;
         
         result->status[1] = SingleHit;
-        result->location[1] = pairs[0].align2->location;
         result->direction[1] = pairs[0].align2->direction;
         result->score[1] = pairs[0].align2->score;
         //result->mapq[1] = pairs[0].align2->mapq;
         result->mapq[1] = 70;
         result->isTranscriptome[1] = pairs[0].align2->isTranscriptome;
-        result->flag[1] = pairs[0].flag;
         
     } else {
          
         //Sort the scores by score, using operator< in AlignmentPair class
         sort(pairs.begin(), pairs.end());
-                         
+
+       //First we convert the transcriptome coordinates back to a genomic position, for sorting
+      if (pairs[0].align1->isTranscriptome) {
+
+        result->tlocation[0] = pairs[0].align1->location;
+        unsigned offset;
+        genome->getOffsetOfPiece(pairs[0].align1->rname.c_str(), &offset);
+        offset += pairs[0].align1->pos;
+        result->location[0] = offset;
+
+        //printf("Location: %u tLocation: %u\n", result->location[0], result->tlocation[0]);
+
+      } else {
+        result->tlocation[0] = 0;
         result->location[0] = pairs[0].align1->location;
+      }
+
+      if (pairs[0].align2->isTranscriptome) {
+
+        result->tlocation[1] = pairs[0].align2->location;
+        unsigned offset;
+        genome->getOffsetOfPiece(pairs[0].align2->rname.c_str(), &offset);
+        offset += pairs[0].align2->pos;
+        result->location[1] = offset;
+
+        //printf("Location: %u tLocation: %u\n", result->location[1], result->tlocation[1]);
+
+      } else {
+        result->tlocation[1] = 0;
+        result->location[1] = pairs[0].align2->location;
+      }
+
+
         result->direction[0] = pairs[0].align1->direction;
         result->score[0] = pairs[0].align1->score;
         //result->mapq[0] = pairs[0].align1->mapq;
         result->isTranscriptome[0] = pairs[0].align1->isTranscriptome;
-        result->flag[0] = pairs[0].flag;
         
-        result->location[1] = pairs[0].align2->location;
         result->direction[1] = pairs[0].align2->direction;
         result->score[1] = pairs[0].align2->score;
         //result->mapq[1] = pairs[0].align2->mapq;
         result->isTranscriptome[1] = pairs[0].align2->isTranscriptome;
-        result->flag[1] = pairs[0].flag;
     
         //Check to see if the best alignment exceeds the second best alignment
         //by at least confDiff

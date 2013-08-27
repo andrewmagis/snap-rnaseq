@@ -229,7 +229,7 @@ SingleAlignerContext::runIterationThread()
 
         //Set transcriptome and flag here
         bool isTranscriptome = false;
-        char flag = 0;
+        unsigned tlocation = 0;
 
         AlignmentFilter filter(NULL, read, index->getGenome(), transcriptome->getGenome(), gtf, 0, 0, options->confDiff, options->maxDist.start, index->getSeedLength(), g_aligner);
 
@@ -242,14 +242,14 @@ SingleAlignerContext::runIterationThread()
         filter.AddAlignment(location, direction, score, mapq, false, true);
         
         //Filter the results
-        AlignmentResult result = filter.FilterSingle(&location, &direction, &score, &mapq, &isTranscriptome);
+        AlignmentResult result = filter.FilterSingle(&location, &direction, &score, &mapq, &isTranscriptome, &tlocation);
 
         bool wasError = false;
         if (result != NotFound && computeError) {
             wasError = wgsimReadMisaligned(read, location, index, options->misalignThreshold);
         }
 
-        writeRead(read, result, location, direction, isTranscriptome, flag, score, mapq);
+        writeRead(read, result, location, direction, isTranscriptome, tlocation, score, mapq);
         
         updateStats(stats, read, result, location, score, mapq, wasError);
     }
@@ -272,12 +272,12 @@ SingleAlignerContext::writeRead(
     unsigned location,
     Direction direction,
     bool isTranscriptome,
-    char flag,
+    unsigned tlocation,
     int score,
     int mapq)
 {
     if (readWriter != NULL && options->passFilter(read, result)) {
-        readWriter->writeRead(read, result, mapq, location, direction, isTranscriptome, flag);
+        readWriter->writeRead(read, result, mapq, location, direction, isTranscriptome, tlocation);
     }
 }
 

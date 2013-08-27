@@ -446,10 +446,10 @@ public:
         const Genome * genome, const Genome * transcriptome, const GTFReader * gtf,
         LandauVishkinWithCigar * lv, char * buffer, size_t bufferSpace, 
         size_t * spaceUsed, size_t qnameLen, Read * read, AlignmentResult result, 
-        int mapQuality, unsigned genomeLocation, Direction direction, bool isTranscriptome = false, char flag = 0,
+        int mapQuality, unsigned genomeLocation, Direction direction, bool isTranscriptome = false, unsigned tlocation = 0,
         bool hasMate = false, bool firstInPair = false, Read * mate = NULL, 
         AlignmentResult mateResult = NotFound, unsigned mateLocation = 0, Direction mateDirection = FORWARD,
-        bool mateIsTranscriptome = false, char mateFlag = 0) const; 
+        bool mateIsTranscriptome = false, unsigned mateTlocation = 0) const; 
 
 private:
 
@@ -608,7 +608,7 @@ BAMFormat::writeRead(
     unsigned genomeLocation,
     Direction direction,
     bool isTranscriptome,
-    char flag,
+    unsigned tlocation,
     bool hasMate,
     bool firstInPair,
     Read * mate, 
@@ -616,7 +616,7 @@ BAMFormat::writeRead(
     unsigned mateLocation,
     Direction mateDirection,
     bool mateIsTranscriptome,
-    char mateFlag) const
+    unsigned mateTlocation) const
 {
     const int MAX_READ = MAX_READ_LENGTH;
     const int cigarBufSize = MAX_READ;
@@ -668,9 +668,9 @@ BAMFormat::writeRead(
                                                genomeLocation, direction == RC, useM, &editDistance, tokens);
                                                           
             //We need the pieceName for conversion             
-            const Genome::Piece *transcriptomePiece = transcriptome->getPieceAtLocation(genomeLocation);
+            const Genome::Piece *transcriptomePiece = transcriptome->getPieceAtLocation(tlocation);
             const char* transcriptomePieceName = transcriptomePiece->name;
-            unsigned transcriptomePositionInPiece = genomeLocation - transcriptomePiece->beginningOffset + 1; // SAM is 1-based
+            unsigned transcriptomePositionInPiece = tlocation - transcriptomePiece->beginningOffset + 1; // SAM is 1-based
             
             //Need to assign to cigarOPS                                                                          
             cigarOps = lv->insertSpliceJunctions(gtf, tokens, transcriptomePieceName, transcriptomePositionInPiece, (char*) cigarBuf, cigarBufSize * sizeof(_uint32), BAM_CIGAR_OPS);
