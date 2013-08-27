@@ -244,10 +244,11 @@ AlignmentResult AlignmentFilter::FilterSingle(unsigned* location, Direction* dir
 			*tlocation = alignments[0].location;
 			unsigned offset;
 			genome->getOffsetOfPiece(alignments[0].rname.c_str(), &offset);
-			offset += alignments[0].pos;
+			offset += alignments[0].pos - 1;
 			*location = offset;
 		} else {
 			*location = alignments[0].location;
+			*tlocation = 0;
 		}
 
         *direction = alignments[0].direction;
@@ -266,10 +267,11 @@ AlignmentResult AlignmentFilter::FilterSingle(unsigned* location, Direction* dir
 			*tlocation = alignments[0].location;
 			unsigned offset;
 			genome->getOffsetOfPiece(alignments[0].rname.c_str(), &offset);
-			offset += alignments[0].pos;
+			offset += alignments[0].pos - 1;
 			*location = offset;
 		} else {
 			*location = alignments[0].location;
+			*tlocation = 0;
 		}
         
         *direction = alignments[0].direction;
@@ -1030,37 +1032,32 @@ void AlignmentFilter::ProcessPairs(PairedAlignmentResult* result, std::vector<Al
 
     if (pairs.size() == 1) {
            
-        //First we convert the transcriptome coordinates back to a genomic position, for sorting
-      if (pairs[0].align1->isTranscriptome) {
+		//First we convert the transcriptome coordinates back to a genomic position, for sorting
+		if (pairs[0].align1->isTranscriptome) {
 
-        result->tlocation[0] = pairs[0].align1->location;
-        unsigned offset;
-        genome->getOffsetOfPiece(pairs[0].align1->rname.c_str(), &offset);
-        offset += pairs[0].align1->pos;
-        result->location[0] = offset;
+			result->tlocation[0] = pairs[0].align1->location;
+			unsigned offset;
+			genome->getOffsetOfPiece(pairs[0].align1->rname.c_str(), &offset);
+			offset += pairs[0].align1->pos - 1;
+			result->location[0] = offset;
 
-	//printf("Location: %u tLocation: %u\n", result->location[0], result->tlocation[0]);
+		} else {
+			result->tlocation[0] = 0;
+			result->location[0] = pairs[0].align1->location;
+		}
 
-      } else {
-        result->tlocation[0] = 0;
-	result->location[0] = pairs[0].align1->location;
-      }
+		if (pairs[0].align2->isTranscriptome) {
 
-      if (pairs[0].align2->isTranscriptome) {
+			result->tlocation[1] = pairs[0].align2->location;
+			unsigned offset;
+			genome->getOffsetOfPiece(pairs[0].align2->rname.c_str(), &offset);
+			offset += pairs[0].align2->pos - 1;
+			result->location[1] = offset;
 
-        result->tlocation[1] = pairs[0].align2->location;
-        unsigned offset;
-        genome->getOffsetOfPiece(pairs[0].align2->rname.c_str(), &offset);
-        offset += pairs[0].align2->pos;
-        result->location[1] = offset;
-
-        //printf("Location: %u tLocation: %u\n", result->location[1], result->tlocation[1]);
-        
-      } else {
-        result->tlocation[1] = 0;
-        result->location[1] = pairs[0].align2->location;
-      }
-
+		} else {
+			result->tlocation[1] = 0;
+			result->location[1] = pairs[0].align2->location;
+		}
 
         //Unique high quality hit
         result->status[0] = SingleHit;
@@ -1082,37 +1079,32 @@ void AlignmentFilter::ProcessPairs(PairedAlignmentResult* result, std::vector<Al
         //Sort the scores by score, using operator< in AlignmentPair class
         sort(pairs.begin(), pairs.end());
 
-       //First we convert the transcriptome coordinates back to a genomic position, for sorting
-      if (pairs[0].align1->isTranscriptome) {
+		//First we convert the transcriptome coordinates back to a genomic position, for sorting
+		if (pairs[0].align1->isTranscriptome) {
 
-        result->tlocation[0] = pairs[0].align1->location;
-        unsigned offset;
-        genome->getOffsetOfPiece(pairs[0].align1->rname.c_str(), &offset);
-        offset += pairs[0].align1->pos;
-        result->location[0] = offset;
+			result->tlocation[0] = pairs[0].align1->location;
+			unsigned offset;
+			genome->getOffsetOfPiece(pairs[0].align1->rname.c_str(), &offset);
+			offset += pairs[0].align1->pos - 1;
+			result->location[0] = offset;
 
-        //printf("Location: %u tLocation: %u\n", result->location[0], result->tlocation[0]);
+		} else {
+			result->tlocation[0] = 0;
+			result->location[0] = pairs[0].align1->location;
+		}
 
-      } else {
-        result->tlocation[0] = 0;
-        result->location[0] = pairs[0].align1->location;
-      }
+		if (pairs[0].align2->isTranscriptome) {
 
-      if (pairs[0].align2->isTranscriptome) {
+			result->tlocation[1] = pairs[0].align2->location;
+			unsigned offset;
+			genome->getOffsetOfPiece(pairs[0].align2->rname.c_str(), &offset);
+			offset += pairs[0].align2->pos - 1;
+			result->location[1] = offset;
 
-        result->tlocation[1] = pairs[0].align2->location;
-        unsigned offset;
-        genome->getOffsetOfPiece(pairs[0].align2->rname.c_str(), &offset);
-        offset += pairs[0].align2->pos;
-        result->location[1] = offset;
-
-        //printf("Location: %u tLocation: %u\n", result->location[1], result->tlocation[1]);
-
-      } else {
-        result->tlocation[1] = 0;
-        result->location[1] = pairs[0].align2->location;
-      }
-
+		} else {
+			result->tlocation[1] = 0;
+			result->location[1] = pairs[0].align2->location;
+		}
 
         result->direction[0] = pairs[0].align1->direction;
         result->score[0] = pairs[0].align1->score;
@@ -1126,7 +1118,8 @@ void AlignmentFilter::ProcessPairs(PairedAlignmentResult* result, std::vector<Al
     
         //Check to see if the best alignment exceeds the second best alignment
         //by at least confDiff
-        unsigned diff = pairs[1].score - pairs[0].score;              
+        unsigned diff = pairs[1].score - pairs[0].score;
+                      
         if (diff >= confDiff) {
         
             //Unique high quality hit
