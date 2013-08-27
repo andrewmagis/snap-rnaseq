@@ -665,7 +665,7 @@ BAMFormat::writeRead(
             //Vector of tokens from CIGAR string for Transcriptome conversion
             cigarOps = computeCigarOps(transcriptome, lv, (char*) cigarNew, cigarBufSize * sizeof(_uint32),
                                                clippedData, clippedLength, basesClippedBefore, basesClippedAfter,
-                                               genomeLocation, direction == RC, useM, &editDistance, tokens);
+                                               tlocation, direction == RC, useM, &editDistance, tokens);
                                                           
             //We need the pieceName for conversion             
             const Genome::Piece *transcriptomePiece = transcriptome->getPieceAtLocation(tlocation);

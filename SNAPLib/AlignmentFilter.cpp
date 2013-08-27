@@ -240,15 +240,15 @@ AlignmentResult AlignmentFilter::FilterSingle(unsigned* location, Direction* dir
         
     } else if (alignments.size() == 1) {
  
-	if (alignments[0].isTranscriptome) {
-          *tlocation = alignments[0].location;
-          unsigned offset;
-          genome->getOffsetOfPiece(alignments[0].rname.c_str(), &offset);
-          offset += alignments[0].pos;
-          *location = offset;
-	} else {
-	  *location = alignments[0].location;
-	}
+		if (alignments[0].isTranscriptome) {
+			*tlocation = alignments[0].location;
+			unsigned offset;
+			genome->getOffsetOfPiece(alignments[0].rname.c_str(), &offset);
+			offset += alignments[0].pos;
+			*location = offset;
+		} else {
+			*location = alignments[0].location;
+		}
 
         *direction = alignments[0].direction;
         *score = alignments[0].score;
@@ -262,15 +262,16 @@ AlignmentResult AlignmentFilter::FilterSingle(unsigned* location, Direction* dir
         //Sort the alignments
         std::sort(alignments.begin(), alignments.end());
         
-        if (alignments[0].isTranscriptome) {
-          *tlocation = alignments[0].location;
-          unsigned offset;
-          genome->getOffsetOfPiece(alignments[0].rname.c_str(), &offset);
-          offset += alignments[0].pos;
-          *location = offset;
-        } else {
-          *location = alignments[0].location;
-        }
+		if (alignments[0].isTranscriptome) {
+			*tlocation = alignments[0].location;
+			unsigned offset;
+			genome->getOffsetOfPiece(alignments[0].rname.c_str(), &offset);
+			offset += alignments[0].pos;
+			*location = offset;
+		} else {
+			*location = alignments[0].location;
+		}
+        
         *direction = alignments[0].direction;
         *score = alignments[0].score;
         //*mapq = alignments[0].mapq;
