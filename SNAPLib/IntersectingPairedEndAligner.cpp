@@ -42,6 +42,7 @@ IntersectingPairedEndAligner::IntersectingPairedEndAligner(
         unsigned      maxSpacing_,                 // Maximum distance to allow between the two ends.
         unsigned      maxBigHits_,
         unsigned      extraSearchDepth_,
+        unsigned      maxCandidatePoolSize,
         BigAllocator  *allocator) :
     index(index_), maxReadSize(maxReadSize_), maxHits(maxHits_), maxK(maxK_), numSeedsFromCommandLine(__min(MAX_MAX_SEEDS,numSeedsFromCommandLine_)), minSpacing(minSpacing_), maxSpacing(maxSpacing_),
     landauVishkin(NULL), reverseLandauVishkin(NULL), maxBigHits(maxBigHits_), maxMergeDistance(31), seedCoverage(seedCoverage_) /*also should be a parameter*/,
@@ -53,7 +54,7 @@ IntersectingPairedEndAligner::IntersectingPairedEndAligner(
     } else {
         maxSeedsToUse = (unsigned)(maxReadSize * seedCoverage / index->getSeedLength());
     }
-    allocateDynamicMemory(allocator, maxReadSize, maxBigHits, maxSeedsToUse, maxK, extraSearchDepth);
+    allocateDynamicMemory(allocator, maxReadSize, maxBigHits, maxSeedsToUse, maxK, extraSearchDepth, maxCandidatePoolSize);
 
     rcTranslationTable['A'] = 'T';
     rcTranslationTable['G'] = 'C';
@@ -79,9 +80,8 @@ IntersectingPairedEndAligner::~IntersectingPairedEndAligner()
     
     size_t 
 IntersectingPairedEndAligner::getBigAllocatorReservation(GenomeIndex * index, unsigned maxBigHitsToConsider, unsigned maxReadSize, unsigned seedLen, unsigned numSeedsFromCommandLine, 
-                                                         double seedCoverage, unsigned maxEditDistanceToConsider, unsigned maxExtraSearchDepth)
+                                                         double seedCoverage, unsigned maxEditDistanceToConsider, unsigned maxExtraSearchDepth, unsigned maxCandidatePoolSize)
 {
-
     unsigned maxSeedsToUse;
     if (0 != numSeedsFromCommandLine) {
         maxSeedsToUse = numSeedsFromCommandLine;
@@ -93,14 +93,14 @@ IntersectingPairedEndAligner::getBigAllocatorReservation(GenomeIndex * index, un
         IntersectingPairedEndAligner aligner; // This has to be in a nested scope so it's destructor is called before that of the countingAllocator
         aligner.index = index;
 
-        aligner.allocateDynamicMemory(&countingAllocator, maxReadSize, maxBigHitsToConsider, maxSeedsToUse, maxEditDistanceToConsider, maxExtraSearchDepth);
+        aligner.allocateDynamicMemory(&countingAllocator, maxReadSize, maxBigHitsToConsider, maxSeedsToUse, maxEditDistanceToConsider, maxExtraSearchDepth, maxCandidatePoolSize);
         return sizeof(aligner) + countingAllocator.getMemoryUsed();
     }
 }
 
     void
 IntersectingPairedEndAligner::allocateDynamicMemory(BigAllocator *allocator, unsigned maxReadSize, unsigned maxBigHitsToConsider, unsigned maxSeedsToUse, 
-                                                    unsigned maxEditDistanceToConsider, unsigned maxExtraSearchDepth)
+                                                    unsigned maxEditDistanceToConsider, unsigned maxExtraSearchDepth, unsigned maxCandidatePoolSize)
 {
     seedUsed = (BYTE *) allocator->allocate(100 + (maxReadSize + 7) / 8);
 
@@ -125,7 +125,7 @@ IntersectingPairedEndAligner::allocateDynamicMemory(BigAllocator *allocator, uns
 
 #endif // 0
 
-    scoringCandidatePoolSize = maxBigHitsToConsider * maxSeedsToUse * NUM_READS_PER_PAIR;
+    scoringCandidatePoolSize = min(maxCandidatePoolSize, maxBigHitsToConsider * maxSeedsToUse * NUM_READS_PER_PAIR);
 
     scoringCandidates = (ScoringCandidate **) allocator->allocate(sizeof(ScoringCandidate *) * (maxEditDistanceToConsider + maxExtraSearchDepth + 1));  //+1 is for 0.
     scoringCandidatePool = (ScoringCandidate *)allocator->allocate(sizeof(ScoringCandidate) * scoringCandidatePoolSize);
@@ -209,7 +209,8 @@ IntersectingPairedEndAligner::align(
         }
 
         if (readLen[whichRead] > maxReadSize) {
-            fprintf(stderr,"IntersectingPairedEndAligner:: got too big read (%d > %d)", readLen[whichRead], maxReadSize);
+            fprintf(stderr,"IntersectingPairedEndAligner:: got too big read (%d > %d)\n", readLen[whichRead], maxReadSize);
+            fprintf(stderr,"Change MAX_READ_LENTH at the beginning of Read.h and recompile.\n");
             soft_exit(1);
         }
 
@@ -326,7 +327,15 @@ IntersectingPairedEndAligner::align(
                 }
             }
 
-            nextSeedToTest += seedLen;
+            //
+            // If we don't have enough seeds left to reach the end of the read, space out the seeds more-or-less evenly.
+            //
+            if ((maxSeeds - countOfHashTableLookups[whichRead] + 1) * seedLen + nextSeedToTest < nPossibleSeeds) {
+                _ASSERT((nPossibleSeeds + nextSeedToTest) / (maxSeeds - countOfHashTableLookups[whichRead] + 1) > seedLen);
+                nextSeedToTest += (nPossibleSeeds + nextSeedToTest) / (maxSeeds - countOfHashTableLookups[whichRead] + 1);
+            } else {
+                nextSeedToTest += seedLen;
+            }
         } // while we need to lookup seeds for this read
     } // for each read
 
@@ -422,9 +431,12 @@ IntersectingPairedEndAligner::align(
 
             unsigned previousMoreHitsLocation = lastGenomeLocationForReadWithMoreHits;
             while (lastGenomeLocationForReadWithMoreHits + maxSpacing >= lastGenomeLocationForReadWithFewerHits && !outOfMoreHitsLocations) {
-                _ASSERT(lowestFreeScoringMateCandidate[whichSetPair] < scoringCandidatePoolSize / NUM_SET_PAIRS);   // Because we allocated an upper bound number of them
                 unsigned bestPossibleScoreForReadWithMoreHits = setPair[readWithMoreHits]->computeBestPossibleScoreForCurrentHit();
 
+                if (lowestFreeScoringMateCandidate[whichSetPair] >= scoringCandidatePoolSize / NUM_READS_PER_PAIR) {
+                    fprintf(stderr,"Ran out of scoring candidate pool entries.  Perhaps trying with a larger value of -mcp will help.\n");
+                    soft_exit(1);
+                }
                 scoringMateCandidates[whichSetPair][lowestFreeScoringMateCandidate[whichSetPair]].init(
                                 lastGenomeLocationForReadWithMoreHits, bestPossibleScoreForReadWithMoreHits, lastSeedOffsetForReadWithMoreHits);
 
@@ -467,10 +479,15 @@ IntersectingPairedEndAligner::align(
                 // There's a set of ends that we can't prove doesn't have too large of a score.  Allocate a fewer hit candidate and stick it in the
                 // correct weight list.
                 //
-                _ASSERT(lowestFreeScoringCandidatePoolEntry < scoringCandidatePoolSize); // because we allocated an upper bound size of them.
+                if (lowestFreeScoringCandidatePoolEntry >= scoringCandidatePoolSize) {
+                    fprintf(stderr,"Ran out of scoring candidate pool entries.  Perhaps rerunning with a larger value of -mcp will help.\n");
+                    soft_exit(1);
+                }
+
                 scoringCandidatePool[lowestFreeScoringCandidatePoolEntry].init(lastGenomeLocationForReadWithFewerHits, whichSetPair, lowestFreeScoringMateCandidate[whichSetPair] - 1,
                                                                                 lastSeedOffsetForReadWithFewerHits, bestPossibleScoreForReadWithFewerHits,
                                                                                 scoringCandidates[lowestBestPossibleScoreOfAnyPossibleMate + bestPossibleScoreForReadWithFewerHits]);
+
 
                 scoringCandidates[lowestBestPossibleScoreOfAnyPossibleMate + bestPossibleScoreForReadWithFewerHits] = &scoringCandidatePool[lowestFreeScoringCandidatePoolEntry];
  
@@ -523,7 +540,7 @@ IntersectingPairedEndAligner::align(
         scoreLocation(readWithFewerHits, setPairDirection[candidate->whichSetPair][readWithFewerHits], candidate->readWithFewerHitsGenomeLocation, 
             candidate->seedOffset, scoreLimit, &fewerEndScore, &fewerEndMatchProbability, &fewerEndGenomeLocationOffset);
 
-        //BJB _ASSERT(-1 == fewerEndScore || fewerEndScore >= candidate->bestPossibleScore);
+        _ASSERT(-1 == fewerEndScore || fewerEndScore >= candidate->bestPossibleScore);
 
 #ifdef _DEBUG
         if (_DumpAlignments) {
@@ -564,7 +581,7 @@ IntersectingPairedEndAligner::align(
                         }
 #endif // _DEBUG
 
-                        //BJB _ASSERT(-1 == mate->score || mate->score >= mate->bestPossibleScore);
+                        _ASSERT(-1 == mate->score || mate->score >= mate->bestPossibleScore);
 
                         mate->scoreLimit = scoreLimit - fewerEndScore;
                     }
@@ -614,8 +631,13 @@ IntersectingPairedEndAligner::align(
                         double oldPairProbability;
 
                         if (NULL == mergeAnchor) {
-                            _ASSERT(firstFreeMergeAnchor < mergeAnchorPoolSize);
+                            if (firstFreeMergeAnchor >= mergeAnchorPoolSize) {
+                                fprintf(stderr,"Ran out of merge anchor pool entries.  Perhaps rerunning with a larger value of -mcp will help\n");
+                                soft_exit(1);
+                            }
+
                             mergeAnchor = &mergeAnchorPool[firstFreeMergeAnchor];
+
                             firstFreeMergeAnchor++;
 
                             mergeAnchor->init(mate->readWithMoreHitsGenomeLocation + mate->genomeOffset, candidate->readWithFewerHitsGenomeLocation + fewerEndGenomeLocationOffset, 

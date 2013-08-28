@@ -25,8 +25,6 @@ Revision History:
 #include "Compat.h"
 #include "exit.h"
 
-using namespace std;
-
 bool BigAllocUseHugePages = true;
 
 
@@ -178,9 +176,9 @@ Return Value:
 {
     if (sizeToAllocate == 0) {
        sizeToAllocate = 1;
-   }
+    }
 
-   static bool warningPrinted = false;
+    static bool warningPrinted = false;
 
     void *allocatedMemory;
 
@@ -214,7 +212,7 @@ Return Value:
         largePageSizeToAllocate += largePageSize;   // For the guard page.
 #endif  // DEBUG
 
-        allocatedMemory = (BYTE *)VirtualAlloc(0,largePageSizeToAllocate,commitFlag|MEM_RESERVE|(BigAllocUseHugePages ? MEM_LARGE_PAGES : 0),PAGE_READWRITE);
+        allocatedMemory = (BYTE *)VirtualAlloc(0,largePageSizeToAllocate,commitFlag|MEM_RESERVE|((BigAllocUseHugePages && !reserveOnly) ? MEM_LARGE_PAGES : 0),PAGE_READWRITE);
 
         if (NULL != allocatedMemory) {
 #if     _DEBUG
@@ -239,8 +237,8 @@ Return Value:
             // to run.  The check for printing only once isn't thread safe, so you might get more than one printed
             // if multiple threads fail at the same time.
             //
-            warningPrinted= true;
-            fprintf(stderr,"BigAlloc: WARNING: Unable to allocate large page memory, %d.  Falling back to VirtualAlloc.  Performance may be adversely affected.\n",GetLastError());
+            warningPrinted = true;
+            fprintf(stderr,"BigAlloc: WARNING: Unable to allocate large page memory, %d.  Falling back to VirtualAlloc.  Performance may be adversely affected.  Size = %lld\n", GetLastError(), largePageSizeToAllocate);
             if (!assertPrivilegeWorked || GetLastError() == 1314) { // TODO: Look up the error code name for 1314.
                 fprintf(stderr,"BigAlloc: Unable to assert the SeLockMemoryPrivilege (%d), which is probably why it failed.\n",assertPrivilegeError);
                 fprintf(stderr,"Try secpol.msc, then SecuritySettings, Local Policies, User Rights Assignment.\n");
@@ -338,7 +336,6 @@ void *BigAlloc(
     flags |= MAP_HUGETLB;
 #endif
     char *mem = (char *) mmap(NULL, sizeToAllocate, PROT_READ|PROT_WRITE, flags, -1, 0);
-    
     if (mem == MAP_FAILED) {
         perror("mmap");
         soft_exit(1);

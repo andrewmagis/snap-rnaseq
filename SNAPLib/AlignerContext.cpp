@@ -232,7 +232,7 @@ AlignerContext::initialize()
     void
 AlignerContext::printStatsHeader()
 {
-    printf("MaxHits\tMaxDist\t%%Used\t%%Unique\t%%Multi\t%%!Found\t%%Error\t%%Pairs\tlvCalls\tReads/s\n");
+    printf("MaxHits\tMaxDist\t%%Used\t%%Unique\t%%Multi\t%%!Found\t%%Error\t%%Pairs\tlvCalls\tNumReads\tReads/s\n");
 }
 
     void
@@ -323,7 +323,7 @@ AlignerContext::printStats()
     } else {
         snprintf(errorRate, sizeof(errorRate), "-");
     }
-    printf("%d\t%d\t%0.2f%%\t%0.2f%%\t%0.2f%%\t%0.2f%%\t%s\t%0.2f%%\t%lld\t%.0f (at: %lld)\n",
+    printf("%d\t%d\t%0.2f%%\t%0.2f%%\t%0.2f%%\t%0.2f%%\t%s\t%0.2f%%\t%lld\t%lld\t%.0f (at: %lld)\n",
             maxHits_, maxDist_, 
             100.0 * usefulReads / max(stats->totalReads, (_int64) 1),
             100.0 * stats->singleHits / usefulReads,
@@ -332,9 +332,11 @@ AlignerContext::printStats()
             errorRate,
             100.0 * stats->alignedAsPairs / usefulReads,
             stats->lvCalls,
-            (1000.0 * usefulReads) / max(alignTime, (_int64) 1), alignTime);
+            stats->totalReads,
+            (1000.0 * usefulReads) / max(alignTime, (_int64) 1), 
+            alignTime);
     if (NULL != perfFile) {
-        fprintf(perfFile, "%d\t%d\t%0.2f%%\t%0.2f%%\t%0.2f%%\t%0.2f%%\t%s\t%0.2f%%\t%lld\tt%.0f\n",
+        fprintf(perfFile, "%d\t%d\t%0.2f%%\t%0.2f%%\t%0.2f%%\t%0.2f%%\t%s\t%0.2f%%\t%lld\t%lld\tt%.0f\n",
                 maxHits_, maxDist_, 
                 100.0 * usefulReads / max(stats->totalReads, (_int64) 1),
                 100.0 * stats->singleHits / usefulReads,
@@ -343,6 +345,7 @@ AlignerContext::printStats()
                 stats->lvCalls,
                 errorRate,
                 100.0 * stats->alignedAsPairs / usefulReads,
+                stats->totalReads,
                 (1000.0 * usefulReads) / max(alignTime, (_int64) 1));
 
         fprintf(perfFile,"\n");
@@ -356,7 +359,7 @@ AlignerContext::printStats()
         double truePositives = (totalAligned - totalErrors) / max(stats->totalReads, (_int64) 1);
         double falsePositives = totalErrors / totalAligned;
         if (i <= 10 || i % 2 == 0 || i == 69) {
-            printf("%d\t%d\t%d\t%.3f\t%.2E\n", i, stats->mapqHistogram[i], stats->mapqErrors[i], truePositives, falsePositives);
+//            printf("%d\t%d\t%d\t%.3f\t%.2E\n", i, stats->mapqHistogram[i], stats->mapqErrors[i], truePositives, falsePositives);
         }
     }
 
@@ -372,4 +375,3 @@ AlignerContext::printStats()
 
     extension->printStats();
 }
-

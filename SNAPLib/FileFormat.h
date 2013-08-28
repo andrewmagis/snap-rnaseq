@@ -144,15 +144,3 @@ getSAMData(
     unsigned mateLocation,
     Direction mateDirection,
     bool mateIsTranscriptome);
-    
-/*
-    const char* 
-convertTranscriptomeToGenome(
-    const GTFReader * gtf, 
-    std::vector<unsigned> & tokens, 
-    std::string transcript_id, 
-    unsigned pos,
-    char * cigarBufWithClipping,
-    unsigned cigarBufWithClippingLen,
-    CigarFormat format = COMPACT_CIGAR_STRING);
-*/

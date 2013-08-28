@@ -40,23 +40,30 @@ using namespace std;
 
 static const int DEFAULT_SEED_SIZE = 20;
 static const double DEFAULT_SLACK = 0.3;
+static const unsigned DEFAULT_PADDING = 500;
+
 
 static void tusage()
 {
     fprintf(stderr,
             "Usage: snap-rna transcriptome <input.gtf> <input.fa> <output-dir> [<options>]\n"
             "Options:\n"
-            "  -s           Seed size (default: %d)\n"
-            "  -h           Hash table slack (default: %.1f)\n"
-            "  -hg19        Use pre-computed table bias for hg19, which results in better speed, balance, and memory footprint but may not work for other references.\n"
-            "  -Ofactor     Specify the size of the overflow space.  This will change the memory footprint, but may be needed for some genomes.\n"
-            "               Larger numbers use more memory but work better with more repetitive genomes.  Smaller numbers reduce the memory\n"
-            "               footprint, but may cause the index build to fail.  Making -O larger than necessary will not affect the resuting\n"
-            "               index.  Factor must be between 1 and 1000, and the default is 40.\n"
-            " -tMaxThreads  Specify the maximum number of threads to use. Default is the number of cores\n"
-            " -HHistogramFile   Build a histogram of seed popularity.  This is just for information, it's not used by SNAP.\n",
+            "  -s               Seed size (default: %d)\n"
+            "  -h               Hash table slack (default: %.1f)\n"
+            "  -hg19            Use pre-computed table bias for hg19, which results in better speed, balance, and memory footprint but may not work for other references.\n"
+            "  -Ofactor         Specify the size of the overflow space.  This will change the memory footprint, but may be needed for some genomes.\n"
+            "                   Larger numbers use more memory but work better with more repetitive genomes.  Smaller numbers reduce the memory\n"
+            "                   footprint, but may cause the index build to fail.  Making -O larger than necessary will not affect the resuting\n"
+            "                   index.  Factor must be between 1 and 1000, and the default is 50.\n"
+            " -tMaxThreads      Specify the maximum number of threads to use. Default is the number of cores.\n"
+            " -pPadding         Specify the number of Ns to put as padding between chromosomes.  This must be as large as the largest\n"
+            "                   edit distance you'll ever use, and there's a performance advantage to have it be bigger than any\n"
+            "                   read you'll process.  Default is %d\n"
+            " -HHistogramFile   Build a histogram of seed popularity.  This is just for information, it's not used by SNAP.\n"
+            " -exact            Compute hash table sizes exactly.  This will slow down index build, but may be necessary in some cases\n",
             DEFAULT_SEED_SIZE,
-            DEFAULT_SLACK);
+            DEFAULT_SLACK,
+            DEFAULT_PADDING);
     soft_exit(1);
 }
 
@@ -71,11 +78,16 @@ static void usage()
             "  -Ofactor         Specify the size of the overflow space.  This will change the memory footprint, but may be needed for some genomes.\n"
             "                   Larger numbers use more memory but work better with more repetitive genomes.  Smaller numbers reduce the memory\n"
             "                   footprint, but may cause the index build to fail.  Making -O larger than necessary will not affect the resuting\n"
-            "                   index.  Factor must be between 1 and 1000, and the default is 40.\n"
+            "                   index.  Factor must be between 1 and 1000, and the default is 50.\n"
             " -tMaxThreads      Specify the maximum number of threads to use. Default is the number of cores.\n"
-            " -HHistogramFile   Build a histogram of seed popularity.  This is just for information, it's not used by SNAP.\n",
+            " -pPadding         Specify the number of Ns to put as padding between chromosomes.  This must be as large as the largest\n"
+            "                   edit distance you'll ever use, and there's a performance advantage to have it be bigger than any\n"
+            "                   read you'll process.  Default is %d\n"
+            " -HHistogramFile   Build a histogram of seed popularity.  This is just for information, it's not used by SNAP.\n"
+            " -exact            Compute hash table sizes exactly.  This will slow down index build, but may be necessary in some cases\n",
             DEFAULT_SEED_SIZE,
-            DEFAULT_SLACK);
+            DEFAULT_SLACK,
+            DEFAULT_PADDING);
     soft_exit(1);
 }
 
@@ -92,11 +104,77 @@ GenomeIndex::runTranscriptomeIndexer(
     const char *fastaFile = argv[1];
     const char *outputDir = argv[2];
 
+    unsigned maxThreads = GetNumberOfProcessors();
+
+    int seedLen = DEFAULT_SEED_SIZE;
     double slack = DEFAULT_SLACK;
+    bool computeBias = true;
+    _uint64 overflowTableFactor = 50;
+    const char *histogramFileName = NULL;
+    unsigned chromosomePadding = DEFAULT_PADDING;
+    bool forceExact = false;
+
+    for (int n = 2; n < argc; n++) {
+        if (strcmp(argv[n], "-s") == 0) {
+            if (n + 1 < argc) {
+                seedLen = atoi(argv[n+1]);
+                n++;
+            } else {
+                usage();
+            }
+        } else if (strcmp(argv[n], "-h") == 0) {
+            if (n + 1 < argc) {
+                slack = atof(argv[n+1]);
+                n++;
+            } else {
+                usage();
+            }
+        } else if (strcmp(argv[n], "-exact") == 0) {
+            forceExact = true;
+        } else if (strcmp(argv[n], "-hg19") == 0) {
+            computeBias = false;
+        } else if (argv[n][0] == '-' && argv[n][1] == 'H') {
+            histogramFileName = argv[n] + 2;
+        } else if (argv[n][0] == '-' && argv[n][1] == 'O') {
+            overflowTableFactor = atoi(argv[n]+2);
+            if (overflowTableFactor < 1 || overflowTableFactor > 1000) {
+                fprintf(stderr,"Overflow table factor must be between 1 and 1000 inclusive (and you need to not leave a space after '-O')\n");
+                soft_exit(1);
+            }
+        } else if (argv[n][0] == '-' && argv[n][1] == 't') {
+            maxThreads = atoi(argv[n]+2);
+            if (maxThreads < 1 || maxThreads > 100) {
+                fprintf(stderr,"maxThreads must be between 1 and 100 inclusive (and you need to not leave a space after '-t')\n");
+                soft_exit(1);
+            }
+        } else if (argv[n][0] == '-' && argv[n][1] == 'p') {
+            chromosomePadding = atoi(argv[n]+2);
+            if (0 == chromosomePadding) {
+                fprintf(stderr,"Invalid chromosome padding specified, must be at least one (and in practice as large as any max edit distance you might use).\n");
+                soft_exit(1);
+            }
+        } else {
+            fprintf(stderr, "Invalid argument: %s\n\n", argv[n]);
+            usage();
+        }
+    }
+
+    if (seedLen < 16 || seedLen > 25) {
+        // Right now there's some hard-coded stuff, like the seed warp table, that
+        // does not work for seed lengths outside the range of 16-25.
+        fprintf(stderr, "Seed length must be between 16 and 25\n");
+        soft_exit(1);
+    }
+
+    if (seedLen < 19 && !computeBias) {
+        fprintf(stderr,"For hg19, you must use seed sizes between 19 and 25 (and not specifying -hg19 won't help, it'll just take longer to fail).\n");
+        soft_exit(1);
+    }
+
     printf("Hash table slack %lf\nLoading genome FASTA file '%s' into memory...", slack, fastaFile);
     fflush(stdout);
     _int64 start = timeInMillis();
-    const Genome *genome = ReadFASTAGenome(fastaFile);
+    const Genome *genome = ReadFASTAGenome(fastaFile, chromosomePadding);
     if (NULL == genome) {
         fprintf(stderr, "Unable to read Genome FASTA file\n");
         exit(1);
@@ -134,8 +212,10 @@ GenomeIndex::runIndexer(
     int seedLen = DEFAULT_SEED_SIZE;
     double slack = DEFAULT_SLACK;
     bool computeBias = true;
-    _uint64 overflowTableFactor = 40;
+    _uint64 overflowTableFactor = 50;
     const char *histogramFileName = NULL;
+    unsigned chromosomePadding = DEFAULT_PADDING;
+    bool forceExact = false;
 
     for (int n = 2; n < argc; n++) {
         if (strcmp(argv[n], "-s") == 0) {
@@ -152,8 +232,8 @@ GenomeIndex::runIndexer(
             } else {
                 usage();
             }
-        } else if (strcmp(argv[n], "-c") == 0) {
-            computeBias = true;
+        } else if (strcmp(argv[n], "-exact") == 0) {
+            forceExact = true;
         } else if (strcmp(argv[n], "-hg19") == 0) {
             computeBias = false;
         } else if (argv[n][0] == '-' && argv[n][1] == 'H') {
@@ -170,29 +250,40 @@ GenomeIndex::runIndexer(
                 fprintf(stderr,"maxThreads must be between 1 and 100 inclusive (and you need to not leave a space after '-t')\n");
                 soft_exit(1);
             }
+        } else if (argv[n][0] == '-' && argv[n][1] == 'p') {
+            chromosomePadding = atoi(argv[n]+2);
+            if (0 == chromosomePadding) {
+                fprintf(stderr,"Invalid chromosome padding specified, must be at least one (and in practice as large as any max edit distance you might use).\n");
+                soft_exit(1);
+            }
         } else {
             fprintf(stderr, "Invalid argument: %s\n\n", argv[n]);
             usage();
         }
     }
 
-    if (seedLen < 16 || seedLen > 23) {
+    if (seedLen < 16 || seedLen > 25) {
         // Right now there's some hard-coded stuff, like the seed warp table, that
-        // does not work for seed lengths outside the range of 16-23.
-        fprintf(stderr, "Seed length must be between 16 and 23\n");
+        // does not work for seed lengths outside the range of 16-25.
+        fprintf(stderr, "Seed length must be between 16 and 25\n");
+        soft_exit(1);
+    }
+
+    if (seedLen < 19 && !computeBias) {
+        fprintf(stderr,"For hg19, you must use seed sizes between 19 and 25 (and not specifying -hg19 won't help, it'll just take longer to fail).\n");
         soft_exit(1);
     }
 
     printf("Hash table slack %lf\nLoading FASTA file '%s' into memory...", slack, fastaFile);
     _int64 start = timeInMillis();
-    const Genome *genome = ReadFASTAGenome(fastaFile);
+    const Genome *genome = ReadFASTAGenome(fastaFile, chromosomePadding);
     if (NULL == genome) {
         fprintf(stderr, "Unable to read FASTA file\n");
         soft_exit(1);
     }
     printf("%llds\n", (timeInMillis() + 500 - start) / 1000);
     unsigned nBases = genome->getCountOfBases();
-    if (!GenomeIndex::BuildIndexToDirectory(genome, seedLen, slack, computeBias, outputDir, overflowTableFactor, maxThreads, histogramFileName)) {
+    if (!GenomeIndex::BuildIndexToDirectory(genome, seedLen, slack, computeBias, outputDir, overflowTableFactor, maxThreads, chromosomePadding, forceExact, histogramFileName)) {
         fprintf(stderr, "Genome index build failed\n");
         soft_exit(1);
     }
@@ -236,7 +327,7 @@ SNAPHashTable** GenomeIndex::allocateHashTables(
         //
         // Create the actual hash tables.  It turns out that the human genome is highly non-uniform in its
         // sequences of bases, so we bias the hash table sizes based on their popularity (which is emperically
-        // measured.)
+        // measured), or use the estimates that we generated and passed in as "biasTable."
         //
         double bias = biasTable != NULL ? biasTable[i] : GenomeIndex::GetHashTableSizeBias(i, seedLen);
         unsigned biasedSize = (unsigned) (hashTableSize * bias);
@@ -257,7 +348,7 @@ SNAPHashTable** GenomeIndex::allocateHashTables(
 
     bool
 GenomeIndex::BuildIndexToDirectory(const Genome *genome, int seedLen, double slack, bool computeBias, const char *directoryName, _uint64 overflowTableFactor,
-                                    unsigned maxThreads, const char *histogramFileName)
+                                    unsigned maxThreads, unsigned chromosomePaddingSize, bool forceExact, const char *histogramFileName)
 {
     bool buildHistogram = (histogramFileName != NULL);
     FILE *histogramFile;
@@ -289,7 +380,7 @@ GenomeIndex::BuildIndexToDirectory(const Genome *genome, int seedLen, double sla
     if (computeBias) {
         unsigned nHashTables = 1 << ((max(seedLen,16) - 16) * 2);
         biasTable = new double[nHashTables];
-        ComputeBiasTable(genome, seedLen, biasTable, maxThreads);
+        ComputeBiasTable(genome, seedLen, biasTable, maxThreads, forceExact);
     }
 
     printf("Allocating memory for hash and overflow tables...");
@@ -407,8 +498,8 @@ GenomeIndex::BuildIndexToDirectory(const Genome *genome, int seedLen, double sla
     size_t totalUsedHashTableElements = 0;
     for (unsigned j = 0; j < index->nHashTables; j++) {
         totalUsedHashTableElements += hashTables[j]->GetUsedElementCount();
-        printf("HashTable[%d] has %lld used elements, loading %lld%%\n",j,(_int64)hashTables[j]->GetUsedElementCount(),
-                (_int64)hashTables[j]->GetUsedElementCount() * 100 / (_int64)hashTables[j]->GetTableSize());
+//        printf("HashTable[%d] has %lld used elements, loading %lld%%\n",j,(_int64)hashTables[j]->GetUsedElementCount(),
+//                (_int64)hashTables[j]->GetUsedElementCount() * 100 / (_int64)hashTables[j]->GetTableSize());
     }
 
     printf("%d(%lld%%) overflow entries, %d overflow backpointers, %d(%lld%%) duplicate overflows, %d(%lld%%) bad seeds, %d both complements used %d no string\n",
@@ -555,7 +646,7 @@ GenomeIndex::BuildIndexToDirectory(const Genome *genome, int seedLen, double sla
 
     //
     // The save format is:
-    //  file 'GenomeIndex' contains in order nHashTables, overflowTableSize, seedLen.
+    //  file 'GenomeIndex' contains in order major version, minor version, nHashTables, overflowTableSize, seedLen, chromosomePaddingSize.
     //  File 'overflowTable' overflowTableSize bytes of the overflow table.
     //  Each hash table is saved in file base name 'GenomeIndexHash%d' where %d is the
     //  table number.
@@ -569,7 +660,7 @@ GenomeIndex::BuildIndexToDirectory(const Genome *genome, int seedLen, double sla
         return false;
     }
 
-    fprintf(indexFile,"%d %d %d",index->nHashTables, index->overflowTableSize, seedLen);
+    fprintf(indexFile,"%d %d %d %d %d %d", GenomeIndexFormatMajorVersion, GenomeIndexFormatMinorVersion, index->nHashTables, index->overflowTableSize, seedLen, chromosomePaddingSize);
 
     fclose(indexFile);
 
@@ -603,13 +694,21 @@ GenomeIndex::BuildIndexToDirectory(const Genome *genome, int seedLen, double sla
     fclose(fOverflowTable);
     fOverflowTable = NULL;
 
+    snprintf(filenameBuffer,filenameBufferSize,"%s%cGenomeIndexHash",directoryName,PATH_SEP);
+    FILE *tablesFile = fopen(filenameBuffer, "wb");
+    if (NULL == tablesFile) {
+        fprintf(stderr, "Unable to open hash table file '%s'\n", filenameBuffer);
+        soft_exit(1);
+    }
+
     for (unsigned i = 0; i < index->nHashTables; i++) {
-        snprintf(filenameBuffer,filenameBufferSize,"%s%cGenomeIndexHash%04d",directoryName,PATH_SEP,i);
-        if (!hashTables[i]->saveToFile(filenameBuffer)) {
+        if (!hashTables[i]->saveToFile(tablesFile)) {
             fprintf(stderr,"GenomeIndex::saveToDirectory: Failed to save hash table %d\n",i);
             return false;
         }
     }
+
+    fclose(tablesFile);
 
     delete index;
     if (biasTable != NULL) {
@@ -698,6 +797,16 @@ Arguments:
 {
     switch (seedLen) {
 
+        case 25: {
+            _ASSERT(whichTable < 262144);
+            return biasTable25[whichTable];
+        }
+
+        case 24: {
+            _ASSERT(whichTable < 65536);
+            return biasTable24[whichTable];
+        }
+
         case 23: {
             _ASSERT(whichTable < 16384);
             return biasTable23[whichTable];
@@ -722,16 +831,6 @@ Arguments:
             _ASSERT(whichTable < 64);
             return biasTable19[whichTable];
         }
-        case 18: {// hg19
-            _ASSERT(whichTable < 16);
-            return biasTable18[whichTable];
-        }
-
-        case 17: {
-            _ASSERT(whichTable < 4);
-            return biasTable17[whichTable];
-        }
-        default:    return 0.6; // We don't have emperical data for this type yet.
     }
 
     fprintf(stderr,"GetHashTableSizeBias: bogus parameters, %d, %d\n",whichTable,seedLen);
@@ -760,13 +859,24 @@ GenomeIndex::loadFromDirectory(char *directoryName)
     }
 
     unsigned seedLen;
-    if (3 != fscanf(indexFile,"%d %d %d",&index->nHashTables, &index->overflowTableSize, &seedLen)) {
-        fprintf(stderr,"GenomeIndex::LoadFromDirectory: didn't read initial values\n");
+    unsigned majorVersion, minorVersion, chromosomePadding;
+    int nRead;
+    if (6 != (nRead = fscanf(indexFile,"%d %d %d %d %d %d", &majorVersion, &minorVersion, &index->nHashTables, &index->overflowTableSize, &seedLen, &chromosomePadding))) {
+        if (3 == nRead) {
+            fprintf(stderr, "Indices built by versions before 0.16.27 are no longer supported.  Please rebuild your index.\n");
+        } else {
+            fprintf(stderr,"GenomeIndex::LoadFromDirectory: didn't read initial values\n");
+        }
         fclose(indexFile);
         delete index;
         return NULL;
     }
     fclose(indexFile);
+
+    if (majorVersion != GenomeIndexFormatMajorVersion) {
+        fprintf(stderr,"This genome index appears to be from a newer version of SNAP than this, and so we can't read it.  Index version %d, SNAP index format version %d\n",
+            majorVersion, GenomeIndexFormatMajorVersion);
+    }
 
     if (0 == seedLen) {
         fprintf(stderr,"GenomeIndex::LoadFromDirectory: saw seed size of 0.\n");
@@ -815,17 +925,26 @@ GenomeIndex::loadFromDirectory(char *directoryName)
         index->hashTables[i] = NULL; // We need to do this so the destructor doesn't crash if loading a hash table fails.
     }
 
+    snprintf(filenameBuffer,filenameBufferSize,"%s%cGenomeIndexHash",directoryName,PATH_SEP);
+    FILE *tablesFile = fopen(filenameBuffer, "rb");
+    if (NULL == tablesFile) {
+        fprintf(stderr,"Unable to open genome hash table file '%s'\n", filenameBuffer);
+        soft_exit(1);
+    }
+
     for (unsigned i = 0; i < index->nHashTables; i++) {
-        snprintf(filenameBuffer,filenameBufferSize,"%s%cGenomeIndexHash%04d",directoryName,PATH_SEP,i);
-        if (NULL == (index->hashTables[i] = new SNAPHashTable(filenameBuffer))) {
+        if (NULL == (index->hashTables[i] = SNAPHashTable::loadFromFile(tablesFile))) {
             fprintf(stderr,"GenomeIndex::loadFromDirectory: Failed to load hash table %d\n",i);
             delete index;
             return NULL;
         }
     }
 
+    fclose(tablesFile);
+    tablesFile = NULL;
+
     snprintf(filenameBuffer,filenameBufferSize,"%s%cGenome",directoryName,PATH_SEP);
-    if (NULL == (index->genome = Genome::loadFromFile(filenameBuffer))) {
+    if (NULL == (index->genome = Genome::loadFromFile(filenameBuffer, chromosomePadding))) {
         fprintf(stderr,"GenomeIndex::loadFromDirectory: Failed to load the genome itself\n");
         delete index;
         return NULL;
@@ -989,7 +1108,7 @@ GenomeIndex::~GenomeIndex()
 }
 
     void
-GenomeIndex::ComputeBiasTable(const Genome* genome, int seedLen, double* table, unsigned maxThreads)
+GenomeIndex::ComputeBiasTable(const Genome* genome, int seedLen, double* table, unsigned maxThreads, bool forceExact)
 /**
  * Fill in table with the table size biases for a given genome and seed size.
  * We assume that table is already of the correct size for our seed size
@@ -1007,16 +1126,20 @@ GenomeIndex::ComputeBiasTable(const Genome* genome, int seedLen, double* table, 
 
     static const unsigned GENOME_SIZE_FOR_EXACT_COUNT = 1 << 20;  // Needs to be a power of 2 for hash sets
 
-    bool computeExactly = (countOfBases < GENOME_SIZE_FOR_EXACT_COUNT);
+    bool computeExactly = (countOfBases < GENOME_SIZE_FOR_EXACT_COUNT) || forceExact;
+    if (countOfBases >= (1 << 30) && forceExact) {
+        fprintf(stderr,"You can't use -exact for genomes with >= 2^30 bases.\n");
+        soft_exit(1);
+    }
     FixedSizeVector<unsigned> numExactSeeds(nHashTables, 0);
-    FixedSizeSet<_int64> exactSeedsSeen(2 * GENOME_SIZE_FOR_EXACT_COUNT);
     vector<ApproximateCounter> approxCounters(nHashTables);
 
     _int64 validSeeds = 0;
 
     if (computeExactly) {
+        FixedSizeSet<_int64> exactSeedsSeen(2 * (forceExact ? FirstPowerOf2GreaterThanOrEqualTo(countOfBases) : GENOME_SIZE_FOR_EXACT_COUNT));
         for (unsigned i = 0; i < (unsigned)(countOfBases - seedLen); i++) {
-            if (i % 1000000 == 0) {
+            if (i % 10000000 == 0) {
                 printf("Bias computation: %lld / %lld\n",(_int64)i, (_int64)countOfBases);
             }
             const char *bases = genome->getSubstring(i,seedLen);
@@ -1047,13 +1170,9 @@ GenomeIndex::ComputeBiasTable(const Genome* genome, int seedLen, double* table, 
             }
 
             _ASSERT(seed.getHighBases() < nHashTables);
-            if (computeExactly) {
-                if (!exactSeedsSeen.contains(seed.getBases())) {
-                    exactSeedsSeen.add(seed.getBases());
-                    numExactSeeds[seed.getHighBases()]++;
-                }
-            } else {
-                approxCounters[seed.getHighBases()].add(seed.getLowBases());
+             if (!exactSeedsSeen.contains(seed.getBases())) {
+                exactSeedsSeen.add(seed.getBases());
+                numExactSeeds[seed.getHighBases()]++;
             }
         }
     } else {
@@ -1147,8 +1266,6 @@ struct PerCounterBatch {
 };
 
 
-
-
     void
 GenomeIndex::ComputeBiasTableWorkerThreadMain(void *param)
 {
@@ -1166,6 +1283,7 @@ GenomeIndex::ComputeBiasTableWorkerThreadMain(void *param)
 
     _uint64 unrecordedSkippedSeeds = 0;
 
+    const _uint64 printBatchSize = 100000000;
     for (unsigned i = context->genomeChunkStart; i < context->genomeChunkEnd; i++) {
 
             const char *bases = context->genome->getSubstring(i, context->seedLen);
@@ -1186,6 +1304,7 @@ GenomeIndex::ComputeBiasTableWorkerThreadMain(void *param)
 
             Seed seed(bases, context->seedLen);
             validSeeds++;
+
 
             //
             // Figure out if we're using this base or its complement.
@@ -1208,7 +1327,7 @@ GenomeIndex::ComputeBiasTableWorkerThreadMain(void *param)
 
                 _int64 basesProcessed = InterlockedAdd64AndReturnNewValue(context->nBasesProcessed, PerCounterBatch::nSeedsPerBatch + unrecordedSkippedSeeds);
 
-                const _uint64 printBatchSize = 100000000;
+
                 if ((_uint64)basesProcessed / printBatchSize > ((_uint64)basesProcessed - PerCounterBatch::nSeedsPerBatch - unrecordedSkippedSeeds)/printBatchSize) {
                     printf("Bias computation: %lld / %lld\n",(basesProcessed/printBatchSize)*printBatchSize, (_int64)countOfBases);
                 }
@@ -1217,9 +1336,19 @@ GenomeIndex::ComputeBiasTableWorkerThreadMain(void *param)
     }
 
     for (unsigned i = 0; i < context->nHashTables; i++) {
+        _int64 basesProcessed = InterlockedAdd64AndReturnNewValue(context->nBasesProcessed, batches[i].nUsed + unrecordedSkippedSeeds);
+
+        if ((_uint64)basesProcessed / printBatchSize > ((_uint64)basesProcessed - batches[i].nUsed - unrecordedSkippedSeeds)/printBatchSize) {
+            printf("Bias computation: %lld / %lld\n",(basesProcessed/printBatchSize)*printBatchSize, (_int64)countOfBases);
+        }
+
+        unrecordedSkippedSeeds = 0; // All except the first time through the loop this will be 0.
+
         AcquireExclusiveLock(&context->approximateCounterLocks[i]);
         batches[i].apply(&(*context->approxCounters)[i]);
         ReleaseExclusiveLock(&context->approximateCounterLocks[i]);
+
+
     }
 
     delete [] batches;
@@ -1261,8 +1390,6 @@ struct PerHashTableBatch {
         nUsed = 0;
     }
 };
-
-
 
 
     void 
@@ -1393,10 +1520,10 @@ GenomeIndex::ApplyHashTableUpdate(BuildHashTablesThreadContext *context, unsigne
 
         if (!hashTable->Insert(lowBases,newEntry)) {
             for (unsigned j = 0; j < index->nHashTables; j++) {
-                printf("HashTable[%d] has %lld used elements\n",j,(_int64)index->hashTables[j]->GetUsedElementCount());
+//                printf("HashTable[%d] has %lld used elements\n",j,(_int64)index->hashTables[j]->GetUsedElementCount());
             }
             printf("IndexBuilder: exceeded size of hash table %d.\n"
-                    "If you're indexing a non-human genome, make sure not to pass the -hg19 option.\n",
+                    "If you're indexing a non-human genome, make sure not to pass the -hg19 option.  Otheriwse, use -exact or increase slack with -h.\n",
                     whichHashTable);
             soft_exit(1);
         }

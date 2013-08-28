@@ -678,9 +678,7 @@ BAMFormat::writeRead(
         }
 
     }
-          
-    //mapQuality = 'B';
-    
+
     // Write the BAM entry
     unsigned auxLen;
     bool auxSAM;
@@ -727,7 +725,6 @@ BAMFormat::writeRead(
         fprintf(stderr, "BAM format: QNAME field must be less than 254 characters long, instead it's %lld\n", qnameLen);
         soft_exit(1);
     }
-    
     bam->l_read_name = (_uint8)qnameLen + 1;
     bam->MAPQ = mapQuality;
     int refLength = cigarOps > 0 ? 0 : fullLength;
@@ -739,7 +736,6 @@ BAMFormat::writeRead(
 		mateLocation != InvalidGenomeLocation ? BAMAlignment::reg2bin(matePositionInPiece-1, matePositionInPiece) :
 		// otherwise at -1, length 1
 		BAMAlignment::reg2bin(-1, 0);
-	
     bam->n_cigar_op = cigarOps;
     bam->FLAG = flags;
     bam->l_seq = fullLength;
@@ -749,7 +745,6 @@ BAMFormat::writeRead(
     memcpy(bam->read_name(), read->getId(), qnameLen);
     bam->read_name()[qnameLen] = 0;
     memcpy(bam->cigar(), cigarBuf, cigarOps * 4);
-        
     BAMAlignment::encodeSeq(bam->seq(), data, fullLength);
     for (unsigned i = 0; i < fullLength; i++) {
         quality[i] -= '!';
@@ -768,7 +763,6 @@ BAMFormat::writeRead(
             ((char*)auxData->value())[auxLen-1] = 0;
         }
     }
-        
     // RG
     if (read->getReadGroup() != NULL && read->getReadGroup() != READ_GROUP_FROM_AUX) {
         BAMAlignAux* rg = (BAMAlignAux*) (auxLen + (char*) bam->firstAux());
@@ -786,7 +780,7 @@ BAMFormat::writeRead(
     nm->tag[0] = 'N'; nm->tag[1] = 'M'; nm->val_type = 'i';
     *(_int32*)nm->value() = editDistance;
     auxLen += (unsigned) nm->size();
-        
+
     if (NULL != spaceUsed) {
         *spaceUsed = bamSize;
     }

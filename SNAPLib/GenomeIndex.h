@@ -45,9 +45,9 @@ public:
     //
     static bool BuildIndexToDirectory(const Genome *genome, int seedLen, double slack,
                                       bool computeBias, const char *directory, _uint64 overflowTableFactor,
-                                      unsigned maxThreads, const char *histogramFileName = NULL);
+                                      unsigned maxThreads, unsigned chromosomePaddingSize, bool forceExact, 
+                                      const char *histogramFileName = NULL);
 
-    bool saveToDirectory(char *directoryName);
     static GenomeIndex *loadFromDirectory(char *directoryName);
 
     inline const Genome *getGenome() {return genome;}
@@ -84,18 +84,21 @@ public:
         int seedLen, double* biasTable = NULL);
     
 private:
+
+    static const unsigned GenomeIndexFormatMajorVersion = 1;
+    static const unsigned GenomeIndexFormatMinorVersion = 0;
     
     static double GetHashTableSizeBias(unsigned whichTable, int seedSize);
 
-    static double biasTable17[];
-    static double biasTable18[];
     static double biasTable19[];
     static double biasTable20[];
     static double biasTable21[];
     static double biasTable22[];
     static double biasTable23[];
+    static double biasTable24[];
+    static double biasTable25[];
 
-    static void ComputeBiasTable(const Genome* genome, int seedSize, double* table, unsigned maxThreads);
+    static void ComputeBiasTable(const Genome* genome, int seedSize, double* table, unsigned maxThreads, bool forceExact);
 
     struct ComputeBiasTableThreadContext {
         SingleWaiterObject              *doneObject;

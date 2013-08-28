@@ -78,6 +78,9 @@ int getpagesize();
 #include <assert.h>
 #include <float.h>
 
+#define UINT32_MAX  ((uint32_t)-1)
+#define UINT64_MAX  ((uint64_t)-1)
+
 #ifdef __linux__
 #include <sched.h>  // For sched_setaffinity
 #endif
@@ -92,7 +95,6 @@ typedef uint8_t BYTE;
 typedef uint8_t _uint8;
 typedef int8_t _int8;
 typedef void *PVOID;
-
 
 // TODO: check if Linux libs have exp10 function
 #include <math.h>

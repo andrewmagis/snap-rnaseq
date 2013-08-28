@@ -69,13 +69,14 @@ AlignerOptions::AlignerOptions(
     phredOffset(33)
 {
     if (forPairedEnd) {
-        maxDist             = 15;
-        seedCoverage        = 1.25;
-        maxHits             = 100;
+        maxDist                 = 15;
+        seedCoverage            = 0;
+        numSeedsFromCommandLine = 8;
+        maxHits                 = 16000;
      } else {
-        maxDist             = 14;
-        seedCoverage        = 1.25;
-        maxHits             = 300;
+        maxDist                 = 14;
+        numSeedsFromCommandLine = 25;
+        maxHits                 = 300;
     }
 
     initializeLVProbabilitiesToPhredPlus33();
@@ -93,9 +94,9 @@ AlignerOptions::usageMessage()
 {
 
     fprintf(stderr,
-        "Usage: %s\n"
+        "Usage: \n%s\n"
         "Options:\n"
-        "  -o filename  output alignments to filename in SAM format\n"
+        "  -o   filename  output alignments to filename in SAM or BAM format, depending on the file extension\n"
         "  -d   maximum edit distance allowed per read or pair (default: %d)\n"
         "  -n   number of seeds to use per read\n"
         "  -sc  Seed coverage (i.e., readSize/seedSize).  Floating point.  Exclusive with -n.  (default: %lf)\n"
@@ -197,6 +198,7 @@ AlignerOptions::parse(
             }
             seedCountSpecified = true;
             seedCoverage = atof(argv[n+1]);
+            numSeedsFromCommandLine = 0;
             n++;
             return true;
         }

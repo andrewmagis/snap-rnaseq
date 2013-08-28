@@ -114,6 +114,12 @@ SingleAlignerContext::parseOptions(
         }
     }
     
+    if (options->maxDist.end + options->extraSearchDepth > MAX_K) {
+        fprintf(stderr,"You specified too large of a maximum edit distance combined with extra search depth.  The must add up to no more than %d.\n", MAX_K);
+        fprintf(stderr,"Either reduce their sum, or change MAX_K in LandauVishkin.h and recompile.\n");
+        soft_exit(1);
+    }
+
     *argsConsumed = n;
     return options;
 }
@@ -135,15 +141,17 @@ SingleAlignerContext::runTask()
 SingleAlignerContext::runIterationThread()
 {
     ReadSupplier *supplier = readSupplierGenerator->generateNewReadSupplier();
-    
     if (NULL == supplier) {
         //
         // No work for this thread to do.
         //
         return;
     }
+	if (extension->runIterationThread(supplier, this)) {
+		delete supplier;
+		return;
+	}
     if (index == NULL) {
-    
         // no alignment, just input/output
         Read *read;
         while (NULL != (read = supplier->getNextRead())) {

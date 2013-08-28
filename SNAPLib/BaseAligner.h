@@ -93,17 +93,6 @@ public:
         seed_map  &map,
         seed_map  &mapRC);
         
-        /*
-        AlignmentResult
-    CharacterizeSeeds(
-        Read        *read, 
-        unsigned    searchRadius, 
-        unsigned    searchLocation, 
-        bool        searchRC, 
-        seed_map    &map, 
-        seed_map    &mapRC);
-        */
-        
     //
     // Statistics gathering.
     //

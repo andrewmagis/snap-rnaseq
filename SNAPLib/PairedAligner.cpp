@@ -231,7 +231,8 @@ PairedAlignerOptions::PairedAlignerOptions(const char* i_commandLine)
     minSpacing(DEFAULT_MIN_SPACING),
     maxSpacing(DEFAULT_MAX_SPACING),
     forceSpacing(false),
-    intersectingAlignerMaxHits(DEFAULT_INTERSECTING_ALIGNER_MAX_HITS)
+    intersectingAlignerMaxHits(DEFAULT_INTERSECTING_ALIGNER_MAX_HITS),
+    maxCandidatePoolSize(DEFAULT_MAX_CANDIDATE_POOL_SIZE)
 {
 }
 
@@ -241,10 +242,14 @@ void PairedAlignerOptions::usageMessage()
     printf(
         "  -s   min and max spacing to allow between paired ends (default: %d %d)\n"
         "  -fs  force spacing to lie between min and max\n"
-        "  -H   max hits for intersecting aligner (default: %d)\n",
+        "  -H   max hits for intersecting aligner (default: %d)\n"
+        "  -mcp specifies the maximum candidate pool size (An internal data structure. \n"
+        "       Only increase this if you get an error message saying to do so. If you're running\n"
+        "       out of memory, you may want to reduce it.  Default: %d)\n",
         DEFAULT_MIN_SPACING,
         DEFAULT_MAX_SPACING,
-        DEFAULT_INTERSECTING_ALIGNER_MAX_HITS);
+        DEFAULT_INTERSECTING_ALIGNER_MAX_HITS,
+        DEFAULT_MAX_CANDIDATE_POOL_SIZE);
 }
 
 bool PairedAlignerOptions::parse(const char** argv, int argc, int& n, bool *done)
@@ -269,6 +274,13 @@ bool PairedAlignerOptions::parse(const char** argv, int argc, int& n, bool *done
     } else if (strcmp(argv[n], "-fs") == 0) {
         forceSpacing = true;
         return true;
+    } else if (strcmp(argv[n], "-mcp") == 0) {
+        if (n + 1 < argc) {
+            maxCandidatePoolSize = atoi(argv[n+1]);
+            n += 1;
+            return true;
+        } 
+        return false;
     }
     return AlignerOptions::parse(argv, argc, n, done);
 }
@@ -366,12 +378,19 @@ AlignerOptions* PairedAlignerContext::parseOptions(int i_argc, const char **i_ar
         if (!options->parse(argv, argc, i, &done)) {
             options->usage();
         }
+
         if (done) {
             i++;    // For the ',' arg
             break;
         }
     }
 
+    if (options->maxDist.end + options->extraSearchDepth > MAX_K) {
+        fprintf(stderr,"You specified too large of a maximum edit distance combined with extra search depth.  The must add up to no more than %d.\n", MAX_K);
+        fprintf(stderr,"Either reduce their sum, or change MAX_K in LandauVishkin.h and recompile.\n");
+        soft_exit(1);
+    }
+        
     *argsConsumed = i;
     return options;
 }
@@ -383,6 +402,7 @@ void PairedAlignerContext::initialize()
     minSpacing = options2->minSpacing;
     maxSpacing = options2->maxSpacing;
     forceSpacing = options2->forceSpacing;
+    maxCandidatePoolSize = options2->maxCandidatePoolSize;
     intersectingAlignerMaxHits = options2->intersectingAlignerMaxHits;
     ignoreMismatchedIDs = options2->ignoreMismatchedIDs;
 }
@@ -408,6 +428,10 @@ void PairedAlignerContext::runIterationThread()
         //
         return;
     }
+	if (extension->runIterationThread(supplier, this)) {
+        delete supplier;
+		return;
+	}
 	if (index == NULL) {
         // no alignment, just input/output
         Read *read0;
@@ -436,15 +460,16 @@ void PairedAlignerContext::runIterationThread()
     int maxReadSize = MAX_READ_LENGTH;
            
     size_t g_memoryPoolSize = IntersectingPairedEndAligner::getBigAllocatorReservation(index, intersectingAlignerMaxHits, maxReadSize, index->getSeedLength(), 
-                                                                numSeedsFromCommandLine, seedCoverage, maxDist, extraSearchDepth);
+                                                                numSeedsFromCommandLine, seedCoverage, maxDist, extraSearchDepth, maxCandidatePoolSize);
     size_t t_memoryPoolSize = IntersectingPairedEndAligner::getBigAllocatorReservation(transcriptome, intersectingAlignerMaxHits, maxReadSize, transcriptome->getSeedLength(), 
-                                                               numSeedsFromCommandLine, seedCoverage, maxDist, extraSearchDepth);
+                                                                numSeedsFromCommandLine, seedCoverage, maxDist, extraSearchDepth, maxCandidatePoolSize);
 
     BigAllocator *g_allocator = new BigAllocator(g_memoryPoolSize);
     BigAllocator *t_allocator = new BigAllocator(t_memoryPoolSize);
     
     IntersectingPairedEndAligner *g_intersectingAligner = new IntersectingPairedEndAligner(index, maxReadSize, maxHits, maxDist, numSeedsFromCommandLine, 
-                                                                seedCoverage, minSpacing, maxSpacing, intersectingAlignerMaxHits, extraSearchDepth, g_allocator);
+                                                                seedCoverage, minSpacing, maxSpacing, intersectingAlignerMaxHits, extraSearchDepth, 
+                                                                maxCandidatePoolSize, g_allocator);
 
     ChimericPairedEndAligner *g_aligner = new ChimericPairedEndAligner(
         index,
@@ -460,7 +485,8 @@ void PairedAlignerContext::runIterationThread()
         g_intersectingAligner);
      
     IntersectingPairedEndAligner *t_intersectingAligner = new IntersectingPairedEndAligner(transcriptome, maxReadSize, maxHits, maxDist, numSeedsFromCommandLine, 
-                                                                seedCoverage, minSpacing, maxSpacing, intersectingAlignerMaxHits, extraSearchDepth, t_allocator);
+                                                                seedCoverage, minSpacing, maxSpacing, intersectingAlignerMaxHits, extraSearchDepth, 
+                                                                maxCandidatePoolSize, t_allocator);
     
     ChimericPairedEndAligner *t_aligner = new ChimericPairedEndAligner(
         transcriptome,
@@ -512,14 +538,9 @@ void PairedAlignerContext::runIterationThread()
     Read *read1;
     while (supplier->getNextReadPair(&read0,&read1)) {
         // Check that the two IDs form a pair; they will usually be foo/1 and foo/2 for some foo.
-        if (!ignoreMismatchedIDs && !readIdsMatch(read0, read1)) {
-            unsigned n[2] = {min(read0->getIdLength(), 200u), min(read1->getIdLength(), 200u)};
-            char* p[2] = {(char*) alloca(n[0] + 1), (char*) alloca(n[1] + 1)};
-            memcpy(p[0], read0->getId(), n[0]); p[0][n[0]] = 0;
-            memcpy(p[1], read1->getId(), n[1]); p[1][n[1]] = 0;
-            fprintf(stderr, "Unmatched read IDs '%s' and '%s'.  Use the -I option to ignore this.\n", p[0], p[1]);
-            soft_exit(1);
-        }
+        if (!ignoreMismatchedIDs) {
+			Read::checkIdMatch(read0, read1);
+		}
 
         stats->totalReads += 2;
         
