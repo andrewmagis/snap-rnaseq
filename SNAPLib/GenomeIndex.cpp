@@ -114,20 +114,20 @@ GenomeIndex::runTranscriptomeIndexer(
     unsigned chromosomePadding = DEFAULT_PADDING;
     bool forceExact = false;
 
-    for (int n = 2; n < argc; n++) {
+    for (int n = 4; n < argc; n++) {
         if (strcmp(argv[n], "-s") == 0) {
             if (n + 1 < argc) {
                 seedLen = atoi(argv[n+1]);
                 n++;
             } else {
-                usage();
+                tusage();
             }
         } else if (strcmp(argv[n], "-h") == 0) {
             if (n + 1 < argc) {
                 slack = atof(argv[n+1]);
                 n++;
             } else {
-                usage();
+                tusage();
             }
         } else if (strcmp(argv[n], "-exact") == 0) {
             forceExact = true;
@@ -155,7 +155,7 @@ GenomeIndex::runTranscriptomeIndexer(
             }
         } else {
             fprintf(stderr, "Invalid argument: %s\n\n", argv[n]);
-            usage();
+            tusage();
         }
     }
 
