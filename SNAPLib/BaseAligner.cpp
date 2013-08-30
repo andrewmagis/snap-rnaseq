@@ -516,7 +516,12 @@ BaseAligner::AlignRead(
     int       *mapq,
     unsigned   searchRadius,
     unsigned   searchLocation,
-    Direction  searchDirection)  
+    Direction  searchDirection,
+    int        maxHitsToGet,
+    int       *multiHitsFound,
+    unsigned  *multiHitLocations,
+    bool      *multiHitRCs,
+    int       *multiHitScores)  
 /*++
 
 Routine Description:
@@ -577,6 +582,12 @@ Return Value:
     *genomeLocation = InvalidGenomeLocation; // Value to return if we don't find a location.
     *hitDirection = FORWARD;             // So we deterministically print the read forward in this case.
     *finalScore = UnusedScoreValue;
+    
+    // If asked to return the locations of multiple hits, make sure we get sensible counts and results
+    if (maxHitsToGet > 0) {
+        memset(hitCount, 0, MAX_K * sizeof(unsigned));
+        *multiHitsFound = 0;
+    }
 
     unsigned lookupsThisRun = 0;
 
@@ -698,7 +709,8 @@ Return Value:
                     finalScore,
                     genomeLocation,
                     hitDirection,
-                    mapq);
+                    mapq,
+                    maxHitsToGet);
 
 #ifdef  _DEBUG
                 if (_DumpAlignments) printf("\tFinal result score %d MAPQ %d (%e probability of best candidate, %e probability of all candidates)  at %u\n", *finalScore, *mapq, probabilityOfBestCandidate, probabilityOfAllCandidates, *genomeLocation);
@@ -887,11 +899,15 @@ Return Value:
                         finalScore,
                         genomeLocation,
                         hitDirection,
-                        mapq)) {
+                        mapq,
+                        maxHitsToGet)) {
 
 #ifdef  _DEBUG
                 if (_DumpAlignments) printf("\tFinal result score %d MAPQ %d at %u\n", *finalScore, *mapq, *genomeLocation);
 #endif  // _DEBUG
+
+                fillHitsFound(maxHitsToGet, multiHitsFound,
+                              multiHitLocations, multiHitRCs, multiHitScores);
                 return finalResult;
             }
         }
@@ -909,13 +925,53 @@ Return Value:
             finalScore,
             genomeLocation,
             hitDirection,
-            mapq);
+            mapq,
+            maxHitsToGet);
 
 #ifdef  _DEBUG
     if (_DumpAlignments) printf("\tFinal result score %d MAPQ %d (%e probability of best candidate, %e probability of all candidates) at %u\n", *finalScore, *mapq, probabilityOfBestCandidate, probabilityOfAllCandidates, *genomeLocation);
 #endif  // _DEBUG
 
+        fillHitsFound(maxHitsToGet, multiHitsFound,
+                      multiHitLocations, multiHitRCs, multiHitScores);
         return finalResult;
+}
+
+    void 
+BaseAligner::fillHitsFound(
+    unsigned    maxHitsToGet, 
+    int        *multiHitsFound, 
+    unsigned   *multiHitLocations,
+    bool       *multiHitRCs,
+    int        *multiHitScores)
+/*++
+
+Routine Description:
+
+    Return up to maxHitsToGet best hits found for the user in the given array and count parameters, as long
+    as maxHitsToGet >= 1. We also need the popularSeedsSkipped parameter to set confDiff adaptively.
+
+--*/
+{
+    if (maxHitsToGet > 0) {
+        //unsigned realConfDiff = options->confDiff + (popularSeedsSkipped > adaptiveConfDiffThreshold ? 1 : 0);
+        *multiHitsFound = 0;
+        int firstDist = 0; // Distance of the best hit
+        while (firstDist < MAX_K && hitCount[firstDist] == 0) {
+            firstDist++;
+        }
+        for (int dist = firstDist; dist < min(firstDist + 4, MAX_K); dist++) {
+            for (unsigned i = 0; i < hitCount[dist]; i++) {
+                multiHitLocations[*multiHitsFound] = hitLocations[dist][i];
+                multiHitRCs[*multiHitsFound] = hitRCs[dist][i];
+                multiHitScores[*multiHitsFound] = dist;
+                *multiHitsFound += 1;
+                if (*multiHitsFound == maxHitsToGet) {
+                    return;
+                }
+            }
+        }
+    }
 }
 
     bool
@@ -926,7 +982,8 @@ BaseAligner::score(
     int             *finalScore,
     unsigned        *singleHitGenomeLocation,
     Direction       *hitDirection,
-    int             *mapq)
+    int             *mapq,
+    unsigned        maxHitsToGet)
 /*++
 
 Routine Description:
@@ -1194,6 +1251,14 @@ Return Value:
 #endif  // _DEBUG
                 
                 candidateToScore->score = score;
+                
+                if (maxHitsToGet > 0 && score != -1 && hitCount[score] < maxHitsToGet) {
+                                    
+                    // Remember the location of this hit because we don't have enough at this distance
+                    hitLocations[score][hitCount[score]] = genomeLocation;
+                    hitRCs[score][hitCount[score]] = elementToScore->direction;
+                    hitCount[score]++;
+                }
 
                 nLocationsScored++;
                 lvScores++;

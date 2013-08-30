@@ -461,11 +461,11 @@ void PairedAlignerContext::runIterationThread()
            
     size_t g_memoryPoolSize = IntersectingPairedEndAligner::getBigAllocatorReservation(index, intersectingAlignerMaxHits, maxReadSize, index->getSeedLength(), 
                                                                 numSeedsFromCommandLine, seedCoverage, maxDist, extraSearchDepth, maxCandidatePoolSize);
-    size_t t_memoryPoolSize = IntersectingPairedEndAligner::getBigAllocatorReservation(transcriptome, intersectingAlignerMaxHits, maxReadSize, transcriptome->getSeedLength(), 
-                                                                numSeedsFromCommandLine, seedCoverage, maxDist, extraSearchDepth, maxCandidatePoolSize);
+    //size_t t_memoryPoolSize = IntersectingPairedEndAligner::getBigAllocatorReservation(transcriptome, intersectingAlignerMaxHits, maxReadSize, transcriptome->getSeedLength(), 
+    //                                                            numSeedsFromCommandLine, seedCoverage, maxDist, extraSearchDepth, maxCandidatePoolSize);
 
     BigAllocator *g_allocator = new BigAllocator(g_memoryPoolSize);
-    BigAllocator *t_allocator = new BigAllocator(t_memoryPoolSize);
+    //BigAllocator *t_allocator = new BigAllocator(t_memoryPoolSize);
     
     IntersectingPairedEndAligner *g_intersectingAligner = new IntersectingPairedEndAligner(index, maxReadSize, maxHits, maxDist, numSeedsFromCommandLine, 
                                                                 seedCoverage, minSpacing, maxSpacing, intersectingAlignerMaxHits, extraSearchDepth, 
@@ -484,6 +484,7 @@ void PairedAlignerContext::runIterationThread()
         extraSearchDepth,
         g_intersectingAligner);
      
+    /*
     IntersectingPairedEndAligner *t_intersectingAligner = new IntersectingPairedEndAligner(transcriptome, maxReadSize, maxHits, maxDist, numSeedsFromCommandLine, 
                                                                 seedCoverage, minSpacing, maxSpacing, intersectingAlignerMaxHits, extraSearchDepth, 
                                                                 maxCandidatePoolSize, t_allocator);
@@ -500,6 +501,12 @@ void PairedAlignerContext::runIterationThread()
         forceSpacing,
         extraSearchDepth,
         t_intersectingAligner);
+    */
+    
+    LandauVishkin<1> lv(0);
+    LandauVishkin<-1> reverseLV(0);
+    BaseAligner *transcriptomeAligner = new BaseAligner(transcriptome, maxHits, maxDist, maxReadSize,
+                                                        numSeedsFromCommandLine,  seedCoverage, extraSearchDepth, &lv, &reverseLV);
     
     //This is for partial matching
     BigAllocator *p_allocator = new BigAllocator(BaseAligner::getBigAllocatorReservation(true, maxHits, maxReadSize, index->getSeedLength(), numSeedsFromCommandLine, seedCoverage));
@@ -573,10 +580,52 @@ void PairedAlignerContext::runIterationThread()
         //Make users setting
         AlignmentFilter filter(read0, read1, index->getGenome(), transcriptome->getGenome(), gtf, minSpacing, maxSpacing, options->confDiff, options->maxDist.start, index->getSeedLength(), partialAligner);
 
+        unsigned maxHitsToGet = 2000;
+        
+        unsigned loc0, loc1;
+        Direction rc0, rc1, temp;
+        int score0, score1;
+        int mapq0, mapq1;
+        AlignmentResult status0, status1;
+        
+        int       transcriptome_multiHitsFound0;
+        unsigned  *transcriptome_multiHitLocations0 = new unsigned[maxHitsToGet];
+        bool      *transcriptome_multiHitRCs0 = new bool[maxHitsToGet];
+        int       *transcriptome_multiHitScores0 = new int[maxHitsToGet]; 
+        int       transcriptome_multiHitsFound1;
+        unsigned  *transcriptome_multiHitLocations1 = new unsigned[maxHitsToGet];
+        bool      *transcriptome_multiHitRCs1 = new bool[maxHitsToGet];
+        int       *transcriptome_multiHitScores1 = new int[maxHitsToGet]; 
+        
+        transcriptomeAligner->setExplorePopularSeeds(0);
+        transcriptomeAligner->setReadId(0);      
+        status0 = transcriptomeAligner->AlignRead(read0, &loc0, &rc0, &score0, &mapq0, 0, 0, 0, maxHitsToGet, &transcriptome_multiHitsFound0, transcriptome_multiHitLocations0, transcriptome_multiHitRCs0, transcriptome_multiHitScores0);            
+       
+        transcriptomeAligner->setExplorePopularSeeds(0);
+        transcriptomeAligner->setReadId(1);      
+        status0 = transcriptomeAligner->AlignRead(read1, &loc1, &rc1, &score1, &mapq1, 0, 0, 0, maxHitsToGet, &transcriptome_multiHitsFound1, transcriptome_multiHitLocations1, transcriptome_multiHitRCs1, transcriptome_multiHitScores1);            
+      
+        //Add reads to filter
+        for (int i = 0; i < transcriptome_multiHitsFound0; ++i) {
+            filter.AddAlignment(transcriptome_multiHitLocations0[i], transcriptome_multiHitRCs0[i], transcriptome_multiHitScores0[i], 0, true, false);
+        }
+    
+        for (int i = 0; i < transcriptome_multiHitsFound1; ++i) {
+            filter.AddAlignment(transcriptome_multiHitLocations1[i], transcriptome_multiHitRCs1[i], transcriptome_multiHitScores1[i], 0, true, true);
+        }    
+    
+        //Now delete the memory
+        delete[] transcriptome_multiHitLocations0;
+        delete[] transcriptome_multiHitRCs0;
+        delete[] transcriptome_multiHitScores0;
+        delete[] transcriptome_multiHitLocations1;
+        delete[] transcriptome_multiHitRCs1;
+        delete[] transcriptome_multiHitScores1;  
+
         //Align to transcriptome
-        t_aligner->align(read0, read1, &result);
-        filter.AddAlignment(result.location[0], result.direction[0], result.score[0], result.mapq[0], true, false);
-        filter.AddAlignment(result.location[1], result.direction[1], result.score[1], result.mapq[1], true, true);
+        //t_aligner->align(read0, read1, &result);
+        //filter.AddAlignment(result.location[0], result.direction[0], result.score[0], result.mapq[0], true, false);
+        //filter.AddAlignment(result.location[1], result.direction[1], result.score[1], result.mapq[1], true, true);
        
         g_aligner->align(read0, read1, &result);
         filter.AddAlignment(result.location[0], result.direction[0], result.score[0], result.mapq[0], false, false);
@@ -610,15 +659,15 @@ void PairedAlignerContext::runIterationThread()
     stats->lvCalls = g_aligner->getLocationsScored();
 
     delete g_aligner;
-    delete t_aligner;
+    //delete t_aligner;
     delete supplier;
 
     g_intersectingAligner->~IntersectingPairedEndAligner();
-    t_intersectingAligner->~IntersectingPairedEndAligner();
+    //t_intersectingAligner->~IntersectingPairedEndAligner();
     partialAligner->~BaseAligner();
         
     delete g_allocator;
-    delete t_allocator;
+    //delete t_allocator;
     delete p_allocator;
 
 }

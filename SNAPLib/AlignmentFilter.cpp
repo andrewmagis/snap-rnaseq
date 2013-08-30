@@ -510,6 +510,7 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
     }
     */
 
+
     //Gene pairs always get priority.  If there is a paired end alignment
     if (intragene_pairs.size() > 0) {
     
