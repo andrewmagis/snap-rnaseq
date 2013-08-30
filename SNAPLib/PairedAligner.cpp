@@ -505,10 +505,10 @@ void PairedAlignerContext::runIterationThread()
     BigAllocator *p_allocator = new BigAllocator(BaseAligner::getBigAllocatorReservation(true, maxHits, maxReadSize, index->getSeedLength(), numSeedsFromCommandLine, seedCoverage));
     BaseAligner *partialAligner = new (p_allocator) BaseAligner(
             index,
-            maxHits,
+            (unsigned)300, //Need to find a way to have this set by user
             maxDist,
             maxReadSize,
-            15, //This is instead of seedCoverage
+            (unsigned)12, //This is instead of seedCoverage
             seedCoverage,
             extraSearchDepth,
             NULL,               // LV (no need to cache in the single aligner)

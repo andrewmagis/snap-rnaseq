@@ -36,6 +36,8 @@ Revision History:
 
 using namespace std;
 
+static const unsigned maxMAPQ = 70;
+
 class Alignment {
 
     friend class AlignmentFilter;
@@ -135,6 +137,7 @@ class AlignmentFilter {
         unsigned confDiff;
         unsigned maxDist;
         unsigned seedLen;
+        unsigned genome_mapq;
         BaseAligner *specialAligner;
 
 };
