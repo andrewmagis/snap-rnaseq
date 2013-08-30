@@ -461,12 +461,8 @@ void PairedAlignerContext::runIterationThread()
            
     size_t g_memoryPoolSize = IntersectingPairedEndAligner::getBigAllocatorReservation(index, intersectingAlignerMaxHits, maxReadSize, index->getSeedLength(), 
                                                                 numSeedsFromCommandLine, seedCoverage, maxDist, extraSearchDepth, maxCandidatePoolSize);
-    //size_t t_memoryPoolSize = IntersectingPairedEndAligner::getBigAllocatorReservation(transcriptome, intersectingAlignerMaxHits, maxReadSize, transcriptome->getSeedLength(), 
-    //                                                            numSeedsFromCommandLine, seedCoverage, maxDist, extraSearchDepth, maxCandidatePoolSize);
 
     BigAllocator *g_allocator = new BigAllocator(g_memoryPoolSize);
-    //BigAllocator *t_allocator = new BigAllocator(t_memoryPoolSize);
-    
     IntersectingPairedEndAligner *g_intersectingAligner = new IntersectingPairedEndAligner(index, maxReadSize, maxHits, maxDist, numSeedsFromCommandLine, 
                                                                 seedCoverage, minSpacing, maxSpacing, intersectingAlignerMaxHits, extraSearchDepth, 
                                                                 maxCandidatePoolSize, g_allocator);
@@ -484,25 +480,6 @@ void PairedAlignerContext::runIterationThread()
         extraSearchDepth,
         g_intersectingAligner);
      
-    /*
-    IntersectingPairedEndAligner *t_intersectingAligner = new IntersectingPairedEndAligner(transcriptome, maxReadSize, maxHits, maxDist, numSeedsFromCommandLine, 
-                                                                seedCoverage, minSpacing, maxSpacing, intersectingAlignerMaxHits, extraSearchDepth, 
-                                                                maxCandidatePoolSize, t_allocator);
-    
-    ChimericPairedEndAligner *t_aligner = new ChimericPairedEndAligner(
-        transcriptome,
-        maxReadSize,
-        maxHits,
-        maxDist,
-        numSeedsFromCommandLine,
-        seedCoverage,
-        minSpacing,
-        maxSpacing,
-        forceSpacing,
-        extraSearchDepth,
-        t_intersectingAligner);
-    */
-    
     LandauVishkin<1> lv(0);
     LandauVishkin<-1> reverseLV(0);
     BaseAligner *transcriptomeAligner = new BaseAligner(transcriptome, maxHits, maxDist, maxReadSize,
@@ -580,7 +557,7 @@ void PairedAlignerContext::runIterationThread()
         //Make users setting
         AlignmentFilter filter(read0, read1, index->getGenome(), transcriptome->getGenome(), gtf, minSpacing, maxSpacing, options->confDiff, options->maxDist.start, index->getSeedLength(), partialAligner);
 
-        unsigned maxHitsToGet = 2000;
+        unsigned maxHitsToGet = 100;
         
         unsigned loc0, loc1;
         Direction rc0, rc1, temp;
@@ -622,11 +599,7 @@ void PairedAlignerContext::runIterationThread()
         delete[] transcriptome_multiHitRCs1;
         delete[] transcriptome_multiHitScores1;  
 
-        //Align to transcriptome
-        //t_aligner->align(read0, read1, &result);
-        //filter.AddAlignment(result.location[0], result.direction[0], result.score[0], result.mapq[0], true, false);
-        //filter.AddAlignment(result.location[1], result.direction[1], result.score[1], result.mapq[1], true, true);
-       
+        //Use the Intersecting Aligner for genomic alignments for speed
         g_aligner->align(read0, read1, &result);
         filter.AddAlignment(result.location[0], result.direction[0], result.score[0], result.mapq[0], false, false);
         filter.AddAlignment(result.location[1], result.direction[1], result.score[1], result.mapq[1], false, true);
@@ -659,15 +632,12 @@ void PairedAlignerContext::runIterationThread()
     stats->lvCalls = g_aligner->getLocationsScored();
 
     delete g_aligner;
-    //delete t_aligner;
     delete supplier;
 
     g_intersectingAligner->~IntersectingPairedEndAligner();
-    //t_intersectingAligner->~IntersectingPairedEndAligner();
     partialAligner->~BaseAligner();
         
     delete g_allocator;
-    //delete t_allocator;
     delete p_allocator;
 
 }

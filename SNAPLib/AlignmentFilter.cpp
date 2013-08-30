@@ -1063,13 +1063,15 @@ void AlignmentFilter::ProcessPairs(PairedAlignmentResult* result, std::vector<Al
         result->status[0] = SingleHit;
         result->direction[0] = pairs[0].align1->direction;
         result->score[0] = pairs[0].align1->score;
-        result->mapq[0] = std::min(maxMAPQ, genome_mapq);
+        //result->mapq[0] = std::min(maxMAPQ, genome_mapq);
+        result->mapq[0] = 70;
         result->isTranscriptome[0] = pairs[0].align1->isTranscriptome;
         
         result->status[1] = SingleHit;
         result->direction[1] = pairs[0].align2->direction;
         result->score[1] = pairs[0].align2->score;
-        result->mapq[1] = std::min(maxMAPQ, genome_mapq);
+        //result->mapq[1] = std::min(maxMAPQ, genome_mapq);
+        result->mapq[1] = 70;
         result->isTranscriptome[1] = pairs[0].align2->isTranscriptome;
         
     } else {
@@ -1119,8 +1121,10 @@ void AlignmentFilter::ProcessPairs(PairedAlignmentResult* result, std::vector<Al
         if (diff >= confDiff) {
         
             //Unique high quality hit
-            result->mapq[0] = std::min(maxMAPQ, genome_mapq);
-            result->mapq[1] = std::min(maxMAPQ, genome_mapq);
+            //result->mapq[0] = std::min(maxMAPQ, genome_mapq);
+            //result->mapq[1] = std::min(maxMAPQ, genome_mapq);
+            result->mapq[0] = 70;
+            result->mapq[1] = 70;
             result->status[0] = SingleHit;
             result->status[1] = SingleHit;   
         
