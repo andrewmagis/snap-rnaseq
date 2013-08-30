@@ -480,14 +480,13 @@ void PairedAlignerContext::runIterationThread()
         extraSearchDepth,
         g_intersectingAligner);
      
-    LandauVishkin<1> lv(0);
-    LandauVishkin<-1> reverseLV(0);
     BaseAligner *transcriptomeAligner = new BaseAligner(transcriptome, maxHits, maxDist, maxReadSize,
-                                                        numSeedsFromCommandLine,  seedCoverage, extraSearchDepth, &lv, &reverseLV);
+                                                        numSeedsFromCommandLine,  seedCoverage, extraSearchDepth, NULL, NULL);
+    transcriptomeAligner->setExplorePopularSeeds(options->explorePopularSeeds);
+    transcriptomeAligner->setStopOnFirstHit(options->stopOnFirstHit);
     
     //This is for partial matching
-    BigAllocator *p_allocator = new BigAllocator(BaseAligner::getBigAllocatorReservation(true, maxHits, maxReadSize, index->getSeedLength(), numSeedsFromCommandLine, seedCoverage));
-    BaseAligner *partialAligner = new (p_allocator) BaseAligner(
+    BaseAligner *partialAligner = new BaseAligner(
             index,
             (unsigned)300, //Need to find a way to have this set by user
             maxDist,
@@ -496,12 +495,8 @@ void PairedAlignerContext::runIterationThread()
             seedCoverage,
             extraSearchDepth,
             NULL,               // LV (no need to cache in the single aligner)
-            NULL,               // reverse LV
-            stats,
-            p_allocator);
+            NULL);
             
-    p_allocator->assertAllMemoryUsed();
-    p_allocator->checkCanaries();
     partialAligner->setExplorePopularSeeds(options->explorePopularSeeds);
     partialAligner->setStopOnFirstHit(options->stopOnFirstHit);
            
@@ -557,7 +552,7 @@ void PairedAlignerContext::runIterationThread()
         //Make users setting
         AlignmentFilter filter(read0, read1, index->getGenome(), transcriptome->getGenome(), gtf, minSpacing, maxSpacing, options->confDiff, options->maxDist.start, index->getSeedLength(), partialAligner);
 
-        unsigned maxHitsToGet = 100;
+        unsigned maxHitsToGet = 1000;
         
         unsigned loc0, loc1;
         Direction rc0, rc1, temp;
@@ -633,12 +628,10 @@ void PairedAlignerContext::runIterationThread()
 
     delete g_aligner;
     delete supplier;
-
     g_intersectingAligner->~IntersectingPairedEndAligner();
-    partialAligner->~BaseAligner();
-        
+    transcriptomeAligner->~BaseAligner();
+    partialAligner->~BaseAligner();       
     delete g_allocator;
-    delete p_allocator;
 
 }
 
