@@ -157,11 +157,6 @@ int AlignmentFilter::AddAlignment(unsigned location, Direction direction, int sc
             pos_original = location - piece->beginningOffset + 1;
             pos = pos_original;
             
-            //If a genome alignment, keep the mapq score 
-            if (mapq < genome_mapq) {
-            	genome_mapq = mapq;
-            }
-            
             if (isMate0) {
                 pos_end = pos+read1->getDataLength()-1;
             } else {
@@ -1060,6 +1055,11 @@ void AlignmentFilter::ProcessPairs(PairedAlignmentResult* result, std::vector<Al
 			result->location[1] = pairs[0].align2->location;
 		}
 
+        //Only if the pair are both genome do we use the MAPQ value
+        if (!pairs[0].align1->isTranscriptome && !pairs[0].align2->isTranscriptome) {
+          genome_mapq = pairs[0].align1->mapq;
+        }
+
         //Unique high quality hit
         result->status[0] = SingleHit;
         result->direction[0] = pairs[0].align1->direction;
@@ -1106,6 +1106,11 @@ void AlignmentFilter::ProcessPairs(PairedAlignmentResult* result, std::vector<Al
 			result->tlocation[1] = 0;
 			result->location[1] = pairs[0].align2->location;
 		}
+
+        //Only if the pair are both genome do we use the MAPQ value
+        if (!pairs[0].align1->isTranscriptome && !pairs[0].align2->isTranscriptome) {
+          genome_mapq = pairs[0].align1->mapq;
+        }
 
         result->direction[0] = pairs[0].align1->direction;
         result->score[0] = pairs[0].align1->score;
