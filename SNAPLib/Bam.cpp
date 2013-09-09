@@ -583,7 +583,7 @@ BAMFormat::writeHeader(
 			memcpy(refseq->name(), pieces[i].name, len);
 			unsigned start = pieces[i].beginningOffset;
 			unsigned end = (i + 1 < numPieces) ? pieces[i+1].beginningOffset : genomeLen;
-			refseq->l_ref() = end - start;
+			refseq->l_ref() = (end - start)-500;
 			refseq = refseq->next();
 			_ASSERT((char*) refseq - header == cursor);
 		}

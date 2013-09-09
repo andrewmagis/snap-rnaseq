@@ -446,7 +446,10 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
             
             //If neither are aligned to transcriptome, we can't be sure
             } else {
+		
+		intragene_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag, true, is_backspliced));
 
+		/*
                 //If they are on different chromosomes
                 if (m0->second.rname.compare(m1->second.rname) != 0) {
  
@@ -479,8 +482,10 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
                         intrachromosomal_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag, true, is_backspliced));
                         continue;    
                     }        
-                }         
+                }
+		*/         
             }
+	    
         }
     }
     

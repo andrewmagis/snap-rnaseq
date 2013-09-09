@@ -569,11 +569,9 @@ void PairedAlignerContext::runIterationThread()
         bool      *transcriptome_multiHitRCs1 = new bool[maxHitsToGet];
         int       *transcriptome_multiHitScores1 = new int[maxHitsToGet]; 
         
-        transcriptomeAligner->setExplorePopularSeeds(0);
         transcriptomeAligner->setReadId(0);      
         status0 = transcriptomeAligner->AlignRead(read0, &loc0, &rc0, &score0, &mapq0, 0, 0, 0, maxHitsToGet, &transcriptome_multiHitsFound0, transcriptome_multiHitLocations0, transcriptome_multiHitRCs0, transcriptome_multiHitScores0);            
        
-        transcriptomeAligner->setExplorePopularSeeds(0);
         transcriptomeAligner->setReadId(1);      
         status0 = transcriptomeAligner->AlignRead(read1, &loc1, &rc1, &score1, &mapq1, 0, 0, 0, maxHitsToGet, &transcriptome_multiHitsFound1, transcriptome_multiHitLocations1, transcriptome_multiHitRCs1, transcriptome_multiHitScores1);            
       

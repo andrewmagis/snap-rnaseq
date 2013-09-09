@@ -786,7 +786,7 @@ SAMFormat::writeHeader(
         for (int i = 0; i < numPieces; i++) {
             unsigned start = pieces[i].beginningOffset;
             unsigned end = (i + 1 < numPieces) ? pieces[i+1].beginningOffset : genomeLen;
-            bytesConsumed += snprintf(header + bytesConsumed, headerBufferSize - bytesConsumed, "@SQ\tSN:%s\tLN:%u\n", pieces[i].name, end - start);
+            bytesConsumed += snprintf(header + bytesConsumed, headerBufferSize - bytesConsumed, "@SQ\tSN:%s\tLN:%u\n", pieces[i].name, (end - start)-500);
 
             if (bytesConsumed >= headerBufferSize) {
                 fprintf(stderr,"SAMWriter: header buffer too small\n");
