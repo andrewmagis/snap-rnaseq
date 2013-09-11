@@ -272,12 +272,12 @@ AlignerOptions::parse(
         }
         
     } else if (strcmp(argv[n], "-fm") == 0) {
-        minPercentAbovePhred = atof(argv[n+1]);
+        minPhred = atoi(argv[n+1]);
         n++;
         return true;
         
     } else if (strcmp(argv[n], "-fp") == 0) {
-        minPhred = atoi(argv[n+1]);
+        minPercentAbovePhred = atof(argv[n+1]);
         n++;
         return true;
         

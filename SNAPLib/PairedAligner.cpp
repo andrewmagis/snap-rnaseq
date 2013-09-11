@@ -531,7 +531,7 @@ void PairedAlignerContext::runIterationThread()
         //Quality filtering
         bool quality0 = read0->qualityFilter(options->minPercentAbovePhred, options->minPhred, options->phredOffset);
         bool quality1 = read1->qualityFilter(options->minPercentAbovePhred, options->minPhred, options->phredOffset);
-        
+     
         if ((!useful0 && !useful1) || (!quality0 || !quality0)) {
             PairedAlignmentResult result;
             result.status[0] = NotFound;

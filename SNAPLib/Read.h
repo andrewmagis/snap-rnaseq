@@ -422,7 +422,7 @@ public:
         bool qualityFilter(float min_percent, unsigned min_qual, unsigned offset=33) const {        
             unsigned count = 0;
             for (unsigned i = 0; i < dataLength; i++) {
-                if (((char)quality[i])-offset >= min_qual) {
+                if (quality[i]-offset >= min_qual) {
                     count++;
                 }
             }
