@@ -36,6 +36,8 @@ AlignerOptions::AlignerOptions(
     :
     commandLine(i_commandLine),
     indexDir(NULL),
+    transcriptomeDir(NULL),
+    contaminationDir(NULL),
     similarityMapFile(NULL),
     numThreads(GetNumberOfProcessors()),
     computeError(false),
@@ -135,7 +137,8 @@ AlignerOptions::usageMessage()
         "  -fm  Quality filtering: specify the minimum Phred score (default: %u)\n"
         "  -fp  Quality filtering: specify the minimum percent of bases >= the minimum Phred score (default: %lf)\n"
         "  -fo  Quality filtering: specify the Phred offset (default: %u)\n"
-
+        "\n"
+        "  -ct  Contamination database directory (optional)\n"
 // not written yet        "  -r   Specify the content of the @RG line in the SAM header.\n"
             ,
             commandLine,
@@ -286,6 +289,11 @@ AlignerOptions::parse(
         n++;
         return true;
          
+  } else if (strcmp(argv[n], "-ct") == 0) {
+        contaminationDir = argv[n+1];
+        n++;
+        return true;
+
     } else if (strcmp(argv[n], "-F") == 0) {
         if (n + 1 < argc) {
             n++;

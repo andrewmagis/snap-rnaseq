@@ -479,7 +479,36 @@ void PairedAlignerContext::runIterationThread()
         forceSpacing,
         extraSearchDepth,
         g_intersectingAligner);
-     
+
+    BigAllocator *c_allocator = NULL;
+    IntersectingPairedEndAligner *c_intersectingAligner = NULL;
+    ChimericPairedEndAligner *c_aligner = NULL;
+
+    if (contamination != NULL) {
+
+      //Contamination database for paired end reads
+      size_t c_memoryPoolSize = IntersectingPairedEndAligner::getBigAllocatorReservation(contamination, intersectingAlignerMaxHits, maxReadSize, contamination->getSeedLength(),
+                                                                  numSeedsFromCommandLine, seedCoverage, maxDist, extraSearchDepth, maxCandidatePoolSize);
+      c_allocator = new BigAllocator(c_memoryPoolSize);
+      c_intersectingAligner = new IntersectingPairedEndAligner(contamination, maxReadSize, maxHits, maxDist, numSeedsFromCommandLine,
+                                                                  seedCoverage, minSpacing, maxSpacing, intersectingAlignerMaxHits, extraSearchDepth,
+                                                                  maxCandidatePoolSize, c_allocator);
+
+      c_aligner = new ChimericPairedEndAligner(
+          contamination,
+          maxReadSize,
+          maxHits,
+          maxDist,
+          numSeedsFromCommandLine,
+          seedCoverage,
+          minSpacing,
+          maxSpacing,
+          forceSpacing,
+          extraSearchDepth,
+          c_intersectingAligner);
+    }
+
+    //Base aligner for transcriptome 
     BaseAligner *transcriptomeAligner = new BaseAligner(transcriptome, maxHits, maxDist, maxReadSize,
                                                         numSeedsFromCommandLine,  seedCoverage, extraSearchDepth, NULL, NULL);
     transcriptomeAligner->setExplorePopularSeeds(options->explorePopularSeeds);
@@ -545,7 +574,7 @@ void PairedAlignerContext::runIterationThread()
             stats->usefulReads += (useful0 && useful1) ? 2 : 1;
         }
         
-        PairedAlignmentResult result;
+        PairedAlignmentResult result, contaminantResult;
         result.isTranscriptome[0] = false;
         result.isTranscriptome[1] = false;
         
@@ -600,6 +629,22 @@ void PairedAlignerContext::runIterationThread()
         //Perform the primary filtering of all aligned reads
         unsigned status = filter.Filter(&result);
 
+        //If the read is still unaligned
+        if ((result.status[0] == NotFound) && (result.status[1] == NotFound)) {
+        
+          //If the contamination database is present
+          if (c_aligner != NULL) {
+
+            c_aligner->align(read0, read1, &contaminantResult);
+            if ((contaminantResult.status[0] != NotFound) && (contaminantResult.status[1] != NotFound)) {
+
+              c_filter->AddAlignment(contaminantResult.location[0], contaminantResult.direction[0], contaminantResult.score[0], contaminantResult.mapq[0], false, false);
+              c_filter->AddAlignment(contaminantResult.location[1], contaminantResult.direction[1], contaminantResult.score[1], contaminantResult.mapq[1], false, true);
+
+            }
+          }
+        }
+
         if (forceSpacing && isOneLocation(result.status[0]) != isOneLocation(result.status[1])) {
             // either both align or neither do
             result.status[0] = result.status[1] = NotFound;
@@ -624,6 +669,16 @@ void PairedAlignerContext::runIterationThread()
     
     stats->lvCalls = g_aligner->getLocationsScored();
 
+    if (c_aligner != NULL) {
+      delete c_aligner;
+    }
+    if (c_intersectingAligner != NULL) {
+      c_intersectingAligner->~IntersectingPairedEndAligner();
+    }
+    if (c_allocator != NULL) {
+      delete c_allocator;
+    }
+    
     delete g_aligner;
     delete supplier;
     g_intersectingAligner->~IntersectingPairedEndAligner();

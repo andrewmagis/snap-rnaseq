@@ -60,6 +60,7 @@ struct AlignerOptions : public AbstractOptions
     const char         *commandLine;
     const char         *indexDir;
     const char         *transcriptomeDir;
+    const char         *contaminationDir;
     const char         *annotation;
     const char         *similarityMapFile;
     int                 numThreads;
