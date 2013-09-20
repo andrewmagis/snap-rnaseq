@@ -677,60 +677,82 @@ void AlignmentFilter::UnalignedRead(Read *read, unsigned minDiff) {
     char flag = 0;
     
     //PrintMaps(map);
-    
-    for (seed_map::iterator it = map.begin(); it != map.end(); ++it) {       
-        for (seed_map::iterator it2 = it; it2 != map.end(); ++it2) {
-        
-            //Do not compare same sets
-            if (it == it2) {
-                continue;
-            }
-            
-            //Now we check to see if the two lengths are nearly the length of the read
-            unsigned length0 = (*(it->second).rbegin() - *(it->second).begin()) + seedLen;
-            unsigned length1 = (*(it2->second).rbegin() - *(it2->second).begin()) + seedLen;
+	std::vector<Alignment*> alignments;
+	
+	//Create partial alignments from map
+	for (seed_map::iterator it = map.begin(); it != map.end(); ++it) {
+	
+		// Get length of mapping segment
+		unsigned length0 = (*(it->second).rbegin() - *(it->second).begin()) + seedLen;
 
+		//Convert segment to genomic coordinates
+		const Genome::Piece *piece0 = genome->getPieceAtLocation(it->first);
+		string chr0 = piece0->name;
+		int pos0 = it->first - piece0->beginningOffset + 1; 
+		
+		//Calculate the consecutive region of the genome that contains this segment
+		unsigned start0 = pos0 + *(it->second).begin();
+		unsigned end0 = start0 + length0 - 1;
+		//printf("0 [%s:%u-%u]\n", chr0.c_str(), start0, end0);
+										   
+		//Create new alignments for each segment
+		alignments.push_back(new Alignment(it->first, false, length0, 0, chr0, start0, end0, start0, "transcript_id", "gene_id", false));
+		
+	
+	}
+	
+	//Create partial alignments from mapRC
+	for (seed_map::iterator it = mapRC.begin(); it != mapRC.end(); ++it) {
+			
+		//Now we check to see if the two lengths are nearly the length of the read
+		unsigned length0 = (*(it->second).rbegin() - *(it->second).begin()) + seedLen;
+						
+		//Convert both segments to genomic coordinates
+		const Genome::Piece *piece0 = genome->getPieceAtLocation(it->first);
+		string chr0 = piece0->name;
+		int pos0 = it->first - piece0->beginningOffset + 1; 
+		
+		//Calculate the consecutive region of the genome that contains this segment
+		unsigned start0 = pos0 + read->getDataLength() - (*(it->second).rbegin() + seedLen);
+		unsigned end0 = start0 + length0 - 1;
+		//printf("RC0 [%s:%u-%u]\n", chr0.c_str(), start0, end0);
+		
+		//Create new alignments for each segment
+		alignments.push_back(new Alignment(it->first, true, length0, 0, chr0, start0, end0, start0, "transcript_id", "gene_id", false));
+
+	}
+	
+	//Now we go through all partial alignments that have been created
+	for (std::vector<Alignment*>::iterator it0 = alignments.begin(); it0 != alignments.end(); ++it0) {
+		for (std::vector<Alignment*>::iterator it1 = alignments.begin(); it1 != alignments.end(); ++it1) {
+			
+			Alignment *align0 = (*it0);
+			Alignment *align1 = (*it1);
+			
+            //Do not compare same alignments
+            if (align0 == align1) {
+                continue;
+            }	
+            
             //If not enough of the read is represented
-            if ((length0 + length1) < (read->getDataLength() - seedLen)) {
+            if ((align0->score + align1->score) < (read->getDataLength() - seedLen)) {
                 continue;
-            }
-
-            //Make sure one begins before the other
+            }		
+            
             bool is_backspliced = false;
-            if ((*(it->second.begin())) > (*(it2->second.rbegin()))) {
-                is_backspliced = true;
-            } else if ((*(it2->second.begin())) > (*(it->second.rbegin()))) {
-                is_backspliced = false;
+            //If one segment begins after the other one ends
+            if (align0->pos > align1->pos_end) {
+            	is_backspliced = true;  //this is not actually correct anymore
+            } else if (align1->pos > align0->pos_end) {
+            	is_backspliced = false;  //this is not actually correct anymore
             } else {
-                //If one is a subset of the other
-                continue;
-            }
-                         
-            //Convert both segments to genomic coordinates
-            const Genome::Piece *piece0 = genome->getPieceAtLocation(it->first);
-            string chr0 = piece0->name;
-            int pos0 = it->first - piece0->beginningOffset + 1; 
+            	continue;
+            }	
             
-            //Calculate the consecutive region of the genome that contains this segment
-            unsigned start0 = pos0 + *(it->second).begin();
-            unsigned end0 = start0 + length0 - 1;
-            //printf("0 [%s:%u-%u]\n", chr0.c_str(), start0, end0);
             
-            const Genome::Piece *piece1 = genome->getPieceAtLocation(it2->first);
-            string chr1 = piece1->name;
-            int pos1 = it2->first - piece1->beginningOffset + 1;     
             
-            //Calculate the consecutive region of the genome that contains this segment
-            unsigned start1 = pos1 + *(it2->second).begin();
-            unsigned end1 = start1 + length1 - 1; 
-            //printf("1 [%s:%u-%u]\n", chr1.c_str(), start1, end1);
-                                       
-            //Create new alignments for each segment
-            Alignment *align0 = new Alignment(it->first, false, length0, 0, chr0, start0, end0, start0, "transcript_id", "gene_id", false);
-            Alignment *align1 = new Alignment(it2->first, false, length1, 0, chr1, start1, end1, start1, "transcript_id", "gene_id", false);
-                
             //If they are on different chromosomes
-            if (chr0.compare(chr1) != 0) {
+            if (align0->rname.compare(align1->rname) != 0) {
             
                 interchromosomal_splices.push_back(AlignmentPair(align0, align1, flag, true, is_backspliced));
                 continue;    
@@ -739,12 +761,12 @@ void AlignmentFilter::UnalignedRead(Read *read, unsigned minDiff) {
             
                 //Query the GTF interval tree for all genes overlapping this position
                 std::vector<GTFGene> results;
-                gtf->IntervalGenes(chr0, start0, end0, results);
+                gtf->IntervalGenes(align0->rname, align0->pos, align0->pos_end, results);
 
                 //For each gene found, look within gene boundary for other read
                 bool found = false;
                 for (std::vector<GTFGene>::iterator it = results.begin(); it != results.end(); ++it) {
-                    if (gtf->GetGene(it->GeneID()).CheckBoundary(chr1, start1)) {
+                    if (gtf->GetGene(it->GeneID()).CheckBoundary(align1->rname, align1->pos)) {
                         intragene_unannotated_splices.push_back(AlignmentPair(align0, align1, flag, true, is_backspliced)); 
                         found = true; 
                         break;
@@ -759,95 +781,11 @@ void AlignmentFilter::UnalignedRead(Read *read, unsigned minDiff) {
                     intrachromosomal_splices.push_back(AlignmentPair(align0, align1, flag, true, is_backspliced));
                     continue;    
                 }        
-            }         
-        }
-    }
-     
-    for (seed_map::iterator it = mapRC.begin(); it != mapRC.end(); ++it) {    
-        for (seed_map::iterator it2 = it; it2 != mapRC.end(); ++it2) {
+            }         	
+		
+		}
+	}
         
-            //Do not compare same sets
-            if (it == it2) {
-                continue;
-            }
-            
-            //Now we check to see if the two lengths are nearly the length of the read
-            unsigned length0 = (*(it->second).rbegin() - *(it->second).begin()) + seedLen;
-            unsigned length1 = (*(it2->second).rbegin() - *(it2->second).begin()) + seedLen;   
-                                            
-            //If not enough of the read is represented
-            if ((length0 + length1) < (read->getDataLength() - seedLen)) {
-                continue;
-            }
-        
-            //Make sure one begins before the other
-            bool is_backspliced = false;
-            if ((*(it2->second.begin())) > (*(it->second.rbegin()))) {
-                is_backspliced = true;
-            } else if ((*(it->second.begin())) > (*(it2->second.rbegin()))) {
-                is_backspliced = false;
-            } else {
-                //If one is a subset of the other
-                continue;
-            }
-                        
-            //Convert both segments to genomic coordinates
-            const Genome::Piece *piece0 = genome->getPieceAtLocation(it->first);
-            string chr0 = piece0->name;
-            int pos0 = it->first - piece0->beginningOffset + 1; 
-            
-            //Calculate the consecutive region of the genome that contains this segment
-            unsigned start0 = pos0 + read->getDataLength() - (*(it->second).rbegin() + seedLen);
-            unsigned end0 = start0 + length0 - 1;
-            //printf("RC0 [%s:%u-%u]\n", chr0.c_str(), start0, end0);
-            
-            const Genome::Piece *piece1 = genome->getPieceAtLocation(it2->first);
-            string chr1 = piece1->name;
-            int pos1 = it2->first - piece1->beginningOffset + 1;     
-            
-            //Calculate the consecutive region of the genome that contains this segment
-            unsigned start1 = pos1 + read->getDataLength() - (*(it2->second).rbegin() + seedLen);
-            unsigned end1 = start1 + length1 - 1;  
-            //printf("RC1 [%s:%u-%u]\n", chr1.c_str(), start1, end1);
-        
-            //Create new alignments for each segment
-            Alignment *align0 = new Alignment(it->first, true, length0, 0, chr0, start0, end0, start0, "transcript_id", "gene_id", false);
-            Alignment *align1 = new Alignment(it2->first, true, length1, 0, chr1, start1, end1, start1, "transcript_id", "gene_id", false);
-                 
-            //If they are on different chromosomes
-            if (chr0.compare(chr1) != 0) {
-            
-                interchromosomal_splices.push_back(AlignmentPair(align0, align1, flag, true, is_backspliced));
-                continue;    
-        
-            } else {
-                    
-                //Query the GTF interval tree for all genes overlapping this position
-                std::vector<GTFGene> results;
-                gtf->IntervalGenes(chr0, start0, end0, results);
-
-                //For each gene found, look within gene boundary for other read
-                bool found = false;
-                for (std::vector<GTFGene>::iterator it = results.begin(); it != results.end(); ++it) {
-                    if (gtf->GetGene(it->GeneID()).CheckBoundary(chr1, start1)) {
-                        intragene_unannotated_splices.push_back(AlignmentPair(align0, align1, flag, true, is_backspliced)); 
-                        found = true; 
-                        break;
-                    }
-                }   
-
-                if (found) {
-                    continue;
-                } else {
-
-                    flag |= 1 << ALIGNED_SAME_CHR;
-                    intrachromosomal_splices.push_back(AlignmentPair(align0, align1, flag, true, is_backspliced));
-                    continue;    
-                }        
-            }         
-        }
-    }
-    
     //Now we go through each of the three sets, prioritizing the cis-gene model, as before
     if (intragene_unannotated_splices.size() > 0) {
         
@@ -887,7 +825,11 @@ void AlignmentFilter::UnalignedRead(Read *read, unsigned minDiff) {
     }
     
     //WHY ARE THESE POINTERS ANYWAY?
+    for (std::vector<Alignment*>::iterator it = alignments.begin(); it != alignments.end(); ++it) {
+    	delete (*it);
+    }
     
+    /*
     for (vector<AlignmentPair>::iterator it = intragene_unannotated_splices.begin(); it != intragene_unannotated_splices.end(); ++it) {
         delete it->align1;
         delete it->align2;
@@ -902,6 +844,7 @@ void AlignmentFilter::UnalignedRead(Read *read, unsigned minDiff) {
         delete it->align1;
         delete it->align2;
     }
+    */
 
     
 }
