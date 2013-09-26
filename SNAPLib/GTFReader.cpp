@@ -388,7 +388,7 @@ void ReadIntervalMap::Consolidate(GTFReader *gtf, unsigned buffer, bool filterPr
     
     //Sort the pairs by the number of mate pairs they have in common
     sort(pairs.begin(), pairs.end());
-    printf("******************************** DONE CONSOLIDATING ****************************************\n"); 
+    //printf("******************************** DONE CONSOLIDATING ****************************************\n"); 
 
      
 }
@@ -1203,6 +1203,27 @@ const GTFGene& GTFReader::GetGene(string gene_id) const {
         exit(1);
     }
     return pos->second;
+
+}
+
+void GTFReader::IncrementReadCount(string transcript_id0, unsigned transcript_start0, unsigned start0, unsigned length0) {
+
+    transcript_map::iterator pos = transcripts.find(transcript_id0);
+    if (pos == transcripts.end()) {
+        //raise exception
+        printf("No transcript %s\n", transcript_id0.c_str());
+        exit(1);
+    }
+    string gene_id = pos->second.GeneID();
+
+    //Increment the gene count for one of the transcripts
+    gene_map::iterator gpos = genes.find(gene_id);
+    if (gpos == genes.end()) {
+        //raise exception
+        printf("No gene %s\n", gene_id.c_str());
+        exit(1);
+    }
+    gpos->second.IncrementReadCount();
 
 }
 

@@ -310,7 +310,9 @@ class GTFReader {
         
         //Function for incrementing read counts for each gene and transcript
         void IncrementReadCount(string transcript_id0, unsigned transcript_start0, unsigned start0, unsigned length0, string transcript_id1, unsigned transcript_start1, unsigned start1, unsigned length1);
-        
+        void IncrementReadCount(string transcript_id0, unsigned transcript_start0, unsigned start0, unsigned length0);        
+
+
         //Functions for building the transcriptome file
         void BuildTranscriptome(const Genome *genome);
         

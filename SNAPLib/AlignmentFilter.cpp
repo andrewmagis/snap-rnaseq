@@ -241,6 +241,7 @@ AlignmentResult AlignmentFilter::FilterSingle(unsigned* location, Direction* dir
 			genome->getOffsetOfPiece(alignments[0].rname.c_str(), &offset);
 			offset += alignments[0].pos - 1;
 			*location = offset;
+
 		} else {
 			*location = alignments[0].location;
 			*tlocation = 0;
@@ -250,6 +251,10 @@ AlignmentResult AlignmentFilter::FilterSingle(unsigned* location, Direction* dir
         *score = alignments[0].score;
         *mapq = std::min(maxMAPQ, genome_mapq);
         *isTranscriptome = alignments[0].isTranscriptome;
+
+        if (alignments[0].isTranscriptome) {
+          gtf->IncrementReadCount(alignments[0].transcript_id, alignments[0].pos_original, alignments[0].pos, read1->getDataLength());
+        }
         return SingleHit;
         
     } else {
@@ -276,6 +281,10 @@ AlignmentResult AlignmentFilter::FilterSingle(unsigned* location, Direction* dir
         unsigned diff = alignments[1].score - alignments[0].score;              
         if (diff >= confDiff) {
             *mapq = std::min(maxMAPQ, genome_mapq);
+  
+            if (alignments[0].isTranscriptome) {
+               gtf->IncrementReadCount(alignments[0].transcript_id, alignments[0].pos_original, alignments[0].pos, read1->getDataLength());
+            }
             return SingleHit; 
         
         } else {
