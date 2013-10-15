@@ -46,13 +46,7 @@ static void usage()
             "   single        align single-end reads\n"
             "   paired        align paired-end reads\n"
             "Type a command without arguments to see its help.\n");
-            
-    fprintf(stderr,
-            "\nTODO:\n"
-            "0. Modify Makefile to fix g++43 to g++\n"
-            "0. Figure out way to add UINT32_MAX and UINT64_MAX (Compat.h)\n"
-            "2. amountRemaining for queries\n"); 
-            
+                       
     soft_exit(1);
 }
 
