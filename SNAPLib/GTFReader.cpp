@@ -176,7 +176,6 @@ bool ReadInterval::Filter() const {
       return true;
    } 
 
-
    for (std::set<string>::iterator it = gene_names.begin(); it != gene_names.end(); ++it) {
 
       if (it->find("HLA-") != std::string::npos) {
@@ -256,7 +255,7 @@ void ReadIntervalPair::WriteGTF(ofstream &outfile) const {
 }
 
 ReadIntervalMap::ReadIntervalMap() {   
-    pthread_mutex_init(&mutex, NULL);
+    InitializeExclusiveLock(&mutex);
 }
    
 ReadIntervalMap::ReadIntervalMap(const ReadIntervalMap &rhs) {
@@ -265,7 +264,7 @@ ReadIntervalMap::ReadIntervalMap(const ReadIntervalMap &rhs) {
 }
 
 ReadIntervalMap::~ReadIntervalMap() {
-    pthread_mutex_destroy(&mutex);
+    DestroyExclusiveLock(&mutex);
 
     for (std::vector<Interval<ReadInterval*> >::iterator it = read_intervals.begin(); it != read_intervals.end(); ++it) {
         delete it->value;
@@ -288,7 +287,7 @@ ReadIntervalMap& ReadIntervalMap::operator=(const ReadIntervalMap &rhs) {
 void ReadIntervalMap::AddInterval(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id, bool is_spliced) {
 
     //Get the mutex
-    pthread_mutex_lock(&mutex);
+    AcquireExclusiveLock(&mutex);
     
     ReadInterval *mate0 = new ReadInterval(chr0, start0, end0, id, is_spliced);
     ReadInterval *mate1 = new ReadInterval(chr1, start1, end1, id, is_spliced);
@@ -301,7 +300,7 @@ void ReadIntervalMap::AddInterval(string chr0, unsigned start0, unsigned end0, s
     read_intervals.push_back(Interval<ReadInterval*>(start1, end1, mate1));
     
     //Unlock it
-    pthread_mutex_unlock(&mutex);
+    ReleaseExclusiveLock(&mutex);
     
 }
 
@@ -328,7 +327,7 @@ void ReadIntervalMap::Consolidate(GTFReader *gtf, unsigned buffer, bool filterPr
     do {
         initial_size = read_intervals.size();
         ConsolidateReadIntervals(buffer);
-        printf("Initial Size: %u Current Size: %u\n", initial_size, read_intervals.size());
+        //printf("Initial Size: %u Current Size: %u\n", initial_size, read_intervals.size());
     } while (initial_size > read_intervals.size());
 
     //Print();  
@@ -388,9 +387,7 @@ void ReadIntervalMap::Consolidate(GTFReader *gtf, unsigned buffer, bool filterPr
     
     //Sort the pairs by the number of mate pairs they have in common
     sort(pairs.begin(), pairs.end());
-    //printf("******************************** DONE CONSOLIDATING ****************************************\n"); 
-
-     
+  
 }
 
 unsigned ReadIntervalMap::ConsolidateReadIntervals(unsigned buffer) {
@@ -442,7 +439,7 @@ unsigned ReadIntervalMap::ConsolidateReadIntervals(unsigned buffer) {
 
         //I have already been consolidated
         if (chr_results.size() == 0) {
-            printf("Warning, cannot find myself\n");
+            //printf("Warning, cannot find myself\n");
         } 
 
         for (std::vector<ReadInterval*>::iterator it3 = chr_results.begin(); it3 != chr_results.end(); ++it3) {
@@ -468,7 +465,6 @@ unsigned ReadIntervalMap::ConsolidateReadIntervals(unsigned buffer) {
         temp_intervals.push_back(Interval<ReadInterval*>(new_interval->start, new_interval->end, new_interval));
     
     } 
-    
     
 //     //Delete all the original intervals that were zeroed out
 //     for (std::vector<Interval<ReadInterval*> >::iterator it = read_intervals.begin(); it != read_intervals.end(); ++it) {
@@ -553,25 +549,6 @@ bool ReadIntervalMap::Find(GTFReader *gtf, ReadInterval *interval1, ReadInterval
 
 void ReadIntervalMap::Intersect(const ReadIntervalMap &rhs, unsigned buffer, unsigned minCount, GTFReader *gtf) {
 
-
-    /*
-    std::vector<Interval<ReadInterval*> > left_intervals;
-    std::vector<Interval<ReadInterval*> > right_intervals;
-
-    //Build the new interval tree
-    for (std::vector<ReadIntervalPair>::iterator it = pairs.begin(); it != pairs.end(); ++it) {
-
-        left_intervals.push_back(Interval<ReadInterval*>(it->interval1->start, it->interval1->end, it->interval1));
-        right_intervals.push_back(Interval<ReadInterval*>(it->interval2->start, it->interval2->end, it->interval2));
-
-    }
-    
-    //Sort these intervals by start position
-    sort(left_intervals.begin(), left_intervals.end(), IntervalNodeSort);  
-    sort(right_intervals.begin(), right_intervals.end(), IntervalNodeSort);
-    */
-
-    //printf("***************************** BEGIN INTERSECT **************************************\n");
 
     //Loop over all intervals in the other map
     for (std::vector<ReadIntervalPair>::const_iterator it = rhs.pairs.begin(); it != rhs.pairs.end(); ++it) {
@@ -796,17 +773,17 @@ bool GTFFeature::operator<(const GTFFeature& rhs) const {
 GTFGene::GTFGene(string _chr, string _gene_id, unsigned _start, unsigned _end, string gene_name_) 
     : chr(_chr), gene_id(_gene_id), start(_start), end(_end), gene_name(gene_name_), read_count(0)
 {
-    pthread_mutex_init(&mutex, NULL);
+    InitializeExclusiveLock(&mutex);
 }
 
 GTFGene::GTFGene(const GTFGene& rhs) 
     : chr(rhs.chr), gene_id(rhs.gene_id), start(rhs.start), end(rhs.end), gene_name(rhs.gene_name), features(rhs.features), read_count(rhs.read_count)
 {
-    pthread_mutex_init(&mutex, NULL);
+    InitializeExclusiveLock(&mutex);
 }
   
 GTFGene::~GTFGene() {
-    pthread_mutex_destroy(&mutex);
+    DestroyExclusiveLock(&mutex);
 }
 
 GTFGene& GTFGene::operator=(const GTFGene& rhs) {
@@ -819,7 +796,7 @@ GTFGene& GTFGene::operator=(const GTFGene& rhs) {
         gene_name = rhs.gene_name;
         features = rhs.features;
         read_count = rhs.read_count;
-        pthread_mutex_init(&mutex, NULL);
+        InitializeExclusiveLock(&mutex);
     }
     return *this;
 }
@@ -851,12 +828,12 @@ bool GTFGene::CheckBoundary(string query_chr, unsigned query_pos, unsigned buffe
 void GTFGene::IncrementReadCount() {
     
     //Lock the mutex, because multiple threads might try to do this simultaneously
-    pthread_mutex_lock(&mutex);
+    AcquireExclusiveLock(&mutex);
         
     read_count++;
         
     //Unlock it
-    pthread_mutex_unlock(&mutex);
+    ReleaseExclusiveLock(&mutex);
 
 }
 
@@ -875,18 +852,18 @@ void GTFGene::Print() const {
 GTFTranscript::GTFTranscript(string _chr, string _gene_id, string _transcript_id, string _gene_name, string _transcript_name, unsigned _start, unsigned _end) 
     : chr(_chr), gene_id(_gene_id), transcript_id(_transcript_id), gene_name(_gene_name), transcript_name(_transcript_name), start(_start), end(_end), read_count(0)
 {
-    pthread_mutex_init(&mutex, NULL);
+    InitializeExclusiveLock(&mutex);
 }
 
 GTFTranscript::GTFTranscript(const GTFTranscript& rhs) 
     : chr(rhs.chr), gene_id(rhs.gene_id), transcript_id(rhs.transcript_id), gene_name(rhs.gene_name), transcript_name(rhs.transcript_name), features(rhs.features), start(rhs.start), end(rhs.end), read_count(rhs.read_count)
 {
-    pthread_mutex_init(&mutex, NULL);
+    InitializeExclusiveLock(&mutex);
 }
   
 GTFTranscript::~GTFTranscript() 
 {
-    pthread_mutex_destroy(&mutex);
+    DestroyExclusiveLock(&mutex);
 }
 
 GTFTranscript& GTFTranscript::operator=(const GTFTranscript& rhs) {
@@ -901,7 +878,7 @@ GTFTranscript& GTFTranscript::operator=(const GTFTranscript& rhs) {
         start = rhs.start;
         end = rhs.end;
         read_count = rhs.read_count;
-        pthread_mutex_init(&mutex, NULL);
+        InitializeExclusiveLock(&mutex);
     }
     return *this;
 }
@@ -929,12 +906,12 @@ void GTFTranscript::UpdateBoundaries(unsigned new_start, unsigned new_end) {
 void GTFTranscript::IncrementReadCount() {
     
     //Lock the mutex, because multiple threads might try to do this simultaneously
-    pthread_mutex_lock(&mutex);
+    AcquireExclusiveLock(&mutex);
         
     read_count++;
         
     //Unlock it
-    pthread_mutex_unlock(&mutex);
+    ReleaseExclusiveLock(&mutex);
 
 }
 

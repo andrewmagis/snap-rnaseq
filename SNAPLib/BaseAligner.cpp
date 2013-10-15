@@ -582,7 +582,7 @@ Return Value:
     *genomeLocation = InvalidGenomeLocation; // Value to return if we don't find a location.
     *hitDirection = FORWARD;             // So we deterministically print the read forward in this case.
     *finalScore = UnusedScoreValue;
-    
+
     // If asked to return the locations of multiple hits, make sure we get sensible counts and results
     if (maxHitsToGet > 0) {
         memset(hitCount, 0, MAX_K * sizeof(unsigned));

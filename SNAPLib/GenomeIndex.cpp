@@ -194,7 +194,6 @@ GenomeIndex::runTranscriptomeIndexer(
     
 }
 
-
     void
 GenomeIndex::runIndexer(
     int argc,

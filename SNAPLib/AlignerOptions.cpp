@@ -94,7 +94,6 @@ AlignerOptions::usage()
     void
 AlignerOptions::usageMessage()
 {
-
     fprintf(stderr,
         "Usage: \n%s\n"
         "Options:\n"
@@ -139,6 +138,7 @@ AlignerOptions::usageMessage()
         "  -fo  Quality filtering: specify the Phred offset (default: %u)\n"
         "\n"
         "  -ct  Contamination database directory (optional)\n"
+
 // not written yet        "  -r   Specify the content of the @RG line in the SAM header.\n"
             ,
             commandLine,
@@ -149,7 +149,7 @@ AlignerOptions::usageMessage()
             minPercentAbovePhred,
             minPhred,
             phredOffset);
-            
+
     if (extra != NULL) {
         extra->usageMessage();
     }
@@ -265,8 +265,7 @@ AlignerOptions::parse(
                 }
             }
             return true;
-        }
-        
+        }   
     } else if (strcmp(argv[n], "-sm") == 0) {
         if (n + 1 < argc && argv[n+1][0] >= '0' && argv[n+1][0] <= '9') {
             sortMemory = atoi(argv[n+1]);

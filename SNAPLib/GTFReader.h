@@ -27,8 +27,8 @@ Revision History:
 #include <map>
 #include <set>
 #include <algorithm>
-#include <pthread.h>
 
+#include "Compat.h"
 #include "IntervalTree.h"
 #include "Genome.h"
 #include "FASTA.h"
@@ -150,7 +150,7 @@ class ReadIntervalMap {
     protected:
 
         unsigned ConsolidateReadIntervals(unsigned buffer);
-        pthread_mutex_t mutex;
+        ExclusiveLock mutex;
         
         //Vector of all paired-end reads that are not between genes
         std::vector<Interval<ReadInterval*> > read_intervals;
@@ -246,7 +246,7 @@ class GTFTranscript {
         feature_list features;
         feature_list exons;
         unsigned read_count;
-        pthread_mutex_t mutex;
+        ExclusiveLock mutex;
 
 };
 
@@ -284,7 +284,7 @@ class GTFGene {
         unsigned end;
         feature_list features;
         unsigned read_count;
-        pthread_mutex_t mutex;
+        ExclusiveLock mutex;
                           
 };        
 

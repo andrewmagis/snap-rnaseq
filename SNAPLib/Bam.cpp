@@ -652,10 +652,9 @@ BAMFormat::writeRead(
         return false;
     }
     if (genomeLocation != InvalidGenomeLocation) {
-        
+ 
         std::vector<unsigned> tokens;
         if (!isTranscriptome) {
-            
             cigarOps = computeCigarOps(genome, lv, (char*) cigarBuf, cigarBufSize * sizeof(_uint32),
                                                clippedData, clippedLength, basesClippedBefore, basesClippedAfter,
                                                genomeLocation, direction == RC, useM, &editDistance, tokens);

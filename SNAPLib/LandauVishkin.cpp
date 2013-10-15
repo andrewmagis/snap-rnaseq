@@ -29,7 +29,7 @@ bool writeCigar(char** o_buf, int* o_buflen, int count, char code, CigarFormat f
 
     tokens.push_back(count);
     tokens.push_back(code);
-    
+
     _ASSERT(count >= 0);
     if (count <= 0) {
         return true;
@@ -248,7 +248,7 @@ int LandauVishkinWithCigar::computeEditDistance(
     const char* text, int textLen,
     const char* pattern, int patternLen,
     int k,
-    char *cigarBuf, int cigarBufLen, bool useM, 
+    char *cigarBuf, int cigarBufLen, bool useM,
     std::vector<unsigned> &tokens,
     CigarFormat format, int* cigarBufUsed)
 {

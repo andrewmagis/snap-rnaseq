@@ -97,7 +97,6 @@ SimpleReadWriter::writeRead(
     bool isTranscriptome, 
     unsigned tlocation)
 {
-
     char* buffer;
     size_t size;
     size_t used;
