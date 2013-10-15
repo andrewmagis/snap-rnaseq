@@ -312,7 +312,6 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
     } 
     */
     
-    
     char flag = 0;
     unsigned best_score = 10000;
     
@@ -456,9 +455,9 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
             //If neither are aligned to transcriptome, we can't be sure
             } else {
 		
-		intragene_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag, true, is_backspliced));
+				//intragene_pairs.push_back(AlignmentPair(&m1->second, &m0->second, flag, true, is_backspliced));
 
-		/*
+				/*
                 //If they are on different chromosomes
                 if (m0->second.rname.compare(m1->second.rname) != 0) {
  
@@ -492,9 +491,7 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
                         continue;    
                     }        
                 }
-		*/         
             }
-	    
         }
     }
     
@@ -637,17 +634,12 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
         return 1;
     }
    
-  //Finally, we check the noRC alignments.  This is to pick up any fusion genes that 
+  	//Finally, we check the noRC alignments.  This is to pick up any fusion genes that 
     //have switched orientations relative to each other
     if (no_rc.size() > 0) {
 
         ProcessPairs(result, no_rc);
      
-        //If this is still a good hit, check to make sure there is no partial hit that is better
-        //if (result->status[0] == SingleHit) {
-        //    FindPartialMatches(result, interchromosomal_pairs[0]);
-        //}
-
         //If this is still a good hit, add this in as a gene link
         if (result->status[0] == SingleHit) {
 
@@ -658,34 +650,13 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
               bool found = gtf->IntrachromosomalPair(no_rc[0].align1->rname, no_rc[0].align1->pos, no_rc[0].align1->pos_end,
                                         no_rc[0].align2->rname, no_rc[0].align2->pos, no_rc[0].align2->pos_end,
                                         string(read0->getId(), read0->getIdLength()));
-          /*      
-          if (found) {
-
-             string id0(read0->getId(), read0->getIdLength());
-             string data0(read0->getData(), read0->getDataLength());
-             string id1(read1->getId(), read1->getIdLength());
-             string data1(read1->getData(), read1->getDataLength());
-           printf("%s\n%s\n%s\n%s\n\n", id0.c_str(), data0.c_str(), id1.c_str(), data1.c_str());
-
-           }
-          */
 
            } else {
 
              //Link these positions in the GTF object              
              bool found = gtf->InterchromosomalPair(no_rc[0].align1->rname, no_rc[0].align1->pos, no_rc[0].align1->pos_end,                                        no_rc[0].align2->rname, no_rc[0].align2->pos, no_rc[0].align2->pos_end,
                                         string(read0->getId(), read0->getIdLength()));
-           /*
-           if (found) {
 
-             string id0(read0->getId(), read0->getIdLength());
-             string data0(read0->getData(), read0->getDataLength());
-             string id1(read1->getId(), read1->getIdLength());
-             string data1(read1->getData(), read1->getDataLength());
-           printf("%s\n%s\n%s\n%s\n\n", id0.c_str(), data0.c_str(), id1.c_str(), data1.c_str());
-
-           }
-           */
           }
 
         }

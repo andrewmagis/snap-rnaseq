@@ -45,7 +45,7 @@ AlignerOptions::AlignerOptions(
     ignoreMismatchedIDs(false),
     outputFileTemplate(NULL),
     doAlignerPrefetch(false),
-    clipping(ClipBack),
+    clipping(ClipFrontAndBack),
     sortOutput(false),
     noIndex(false),
     noDuplicateMarking(false),
@@ -124,7 +124,7 @@ AlignerOptions::usageMessage()
 #endif  // _MSC_VER
 #endif  // USE_DEVTEAM_OPTIONS
         "  -Cxx must be followed by two + or - symbols saying whether to clip low-quality\n"
-        "       bases from front and back of read respectively; default: back only (-C-+)\n"
+        "       bases from front and back of read respectively; default: both (-C--)\n"
 		"  -M   indicates that CIGAR strings in the generated SAM file should use M (alignment\n"
 		"       match) rather than = and X (sequence (mis-)match)\n"
         "  -G   specify a gap penalty to use when generating CIGAR strings\n"
