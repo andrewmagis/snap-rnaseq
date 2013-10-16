@@ -147,6 +147,11 @@ int AlignmentFilter::AddAlignment(unsigned location, Direction direction, int sc
     string transcript_id = "";
     string gene_id = "";
     
+    //do not allow alignments with too many mismatches
+    if (score > maxDist) {
+        return -1;
+    }
+
     //If this is, in fact, aligned to something
     if (location != 0xFFFFFFFF) {
     
@@ -343,10 +348,10 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
         for (alignment_map::iterator m1 = mate1.begin(); m1 != mate1.end(); ++m1) {
         
             //If this read passes the maxDist cutoff
-            unsigned current_score = m0->second.score + m1->second.score;
-            if (current_score > maxDist) {
-                continue;
-            }
+            //unsigned current_score = m0->second.score + m1->second.score;
+            //if (current_score > maxDist) {
+            //    continue;
+            //}
             
             //Calculate distances between these two alignments
             int distance = 0;
