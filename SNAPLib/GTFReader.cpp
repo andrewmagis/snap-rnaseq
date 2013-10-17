@@ -1461,21 +1461,6 @@ void GTFReader::IntrageneCircularSplice(string chr0, unsigned start0, unsigned e
 bool GTFReader::IntrachromosomalPair(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id) {
  
   bool found = false;
-  /* 
-  std::vector<GTFGene> results0, results1;
-   IntervalGenes(chr0, start0, end0, results0);
-   IntervalGenes(chr1, start1, end1, results1);
-   for (std::vector<GTFGene>::iterator it = results0.begin(); it != results0.end(); ++it) {
-     if (it->gene_name.compare("EGFR") == 0) {
-       
-       for (std::vector<GTFGene>::iterator it2 = results1.begin(); it2 != results1.end(); ++it2) {
-         printf("%s\t%s\t%s\t%s\n", it->chr.c_str(), it->gene_name.c_str(), it2->chr.c_str(), it2->gene_name.c_str());
-       }
-
-       found = true;
-     }
-   }
-*/
    intrachromosomal_pairs.AddInterval(chr0, start0, end0, chr1, start1, end1, id, false);
    return found;
 }
@@ -1486,9 +1471,27 @@ void GTFReader::IntrachromosomalSplice(string chr0, unsigned start0, unsigned en
 
 bool GTFReader::InterchromosomalPair(string chr0, unsigned start0, unsigned end0, string chr1, unsigned start1, unsigned end1, string id) {
 
-
+  bool found = false;
+  /*
+  string gene1 = "GAPDH";
+  string gene2 = "GAPDHP1";
+ 
+  std::vector<GTFGene> results0, results1;
+   IntervalGenes(chr0, start0, end0, results0);
+   IntervalGenes(chr1, start1, end1, results1);
+   for (std::vector<GTFGene>::iterator it = results0.begin(); it != results0.end(); ++it) {
+     if ((it->gene_name.compare(gene1) == 0) || (it->gene_name.compare(gene2) == 0)) {
+       
+       for (std::vector<GTFGene>::iterator it2 = results1.begin(); it2 != results1.end(); ++it2) {
+         if ((it2->gene_name.compare(gene1) == 0) || (it2->gene_name.compare(gene2) == 0)) {
+           found = true;
+         }
+       }
+     }
+   }
+   */
     interchromosomal_pairs.AddInterval(chr0, start0, end0, chr1, start1, end1, id, false);
-    return false;
+    return found;
 }
 
 
