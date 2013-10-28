@@ -1381,7 +1381,7 @@ void GTFReader::IncrementReadCount(string transcript_id0, unsigned transcript_st
             exit(1);
         }
         gene_id = pos->second.GeneID();
-        pos->second.IncrementReadCount();
+        //We only increment once for a paired-end fragment
         pos->second.IncrementReadCount();
     }
     
@@ -1392,9 +1392,8 @@ void GTFReader::IncrementReadCount(string transcript_id0, unsigned transcript_st
         printf("No gene %s\n", gene_id.c_str());
         exit(1);
     }
+    //We only increment once for a paired-end fragment
     gpos->second.IncrementReadCount();
-    gpos->second.IncrementReadCount();    
-      
     
 //     printf("Final\n");
 //     for (std::set<string>::iterator it = final_ids.begin(); it != final_ids.end(); ++it) {
