@@ -632,7 +632,7 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
                                       string(read0->getId(), read0->getIdLength()));
         
 
-                   
+              /*    
               if (found) {
 
                  string id0(read0->getId(), read0->getIdLength());
@@ -642,7 +642,7 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
                  printf("IC: %s\n%s\n%s\n%s\n\n", id0.c_str(), data0.c_str(), id1.c_str(), data1.c_str());
 
                }
-              
+               */
 
 
 
@@ -685,7 +685,7 @@ int AlignmentFilter::Filter(PairedAlignmentResult* result) {
              bool found = gtf->InterchromosomalPair(no_rc[0].align1->rname, no_rc[0].align1->pos, no_rc[0].align1->pos_end,                                        no_rc[0].align2->rname, no_rc[0].align2->pos, no_rc[0].align2->pos_end,
                                         string(read0->getId(), read0->getIdLength()));
 
-              /*   
+               /*                
               if (found) {
 
                  string id0(read0->getId(), read0->getIdLength());

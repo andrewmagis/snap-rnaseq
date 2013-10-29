@@ -903,12 +903,25 @@ void GTFTranscript::UpdateBoundaries(unsigned new_start, unsigned new_end) {
     end = std::max(new_end, end);
 }   
 
-void GTFTranscript::IncrementReadCount() {
+unsigned GTFTranscript::SplicedLength() const {
+
+    unsigned length = 0;
+    for (feature_list::const_iterator it = exons.begin(); it != exons.end(); ++it) {
+
+        //If transcript_pos is less than or equal to this
+        length += (*it)->Length();
+
+    }
+    //Don't ever return a length of zero
+    return std::max(length, (unsigned)1);
+}
+
+void GTFTranscript::IncrementReadCount(unsigned numPotentialTranscripts = 1) {
     
     //Lock the mutex, because multiple threads might try to do this simultaneously
     AcquireExclusiveLock(&mutex);
         
-    read_count++;
+    read_count+= 1.f/(float)numPotentialTranscripts;
         
     //Unlock it
     ReleaseExclusiveLock(&mutex);
@@ -1016,12 +1029,18 @@ void GTFTranscript::WriteFASTA(const Genome *genome, std::ofstream &outfile) con
 
 }
 
+unsigned GTFTranscript::NormalizedCount() const {
+
+    return round((float)read_count / ((float)SplicedLength() / 1000.0));
+
+}
+
 void GTFTranscript::WriteReadCountID(ofstream &outfile) const {
-    outfile << transcript_id << '\t' << read_count << endl;
+    outfile << transcript_id << '\t' << round(read_count) << endl;
 }
 
 void GTFTranscript::WriteReadCountName(ofstream &outfile) const {
-    outfile << transcript_name << '\t' << read_count << endl;
+    outfile << transcript_name << '\t' << round(read_count) << endl;
 }
 
 //Constructor
@@ -1382,7 +1401,11 @@ void GTFReader::IncrementReadCount(string transcript_id0, unsigned transcript_st
         }
         gene_id = pos->second.GeneID();
         //We only increment once for a paired-end fragment
+<<<<<<< HEAD
+        pos->second.IncrementReadCount(final_ids.size());
+=======
         pos->second.IncrementReadCount();
+>>>>>>> 277e738d83826213a964a888ecba50c27be2f39e
     }
     
     //Increment the gene count for one of the transcripts
@@ -1393,7 +1416,12 @@ void GTFReader::IncrementReadCount(string transcript_id0, unsigned transcript_st
         exit(1);
     }
     //We only increment once for a paired-end fragment
+<<<<<<< HEAD
+    gpos->second.IncrementReadCount();    
+      
+=======
     gpos->second.IncrementReadCount();
+>>>>>>> 277e738d83826213a964a888ecba50c27be2f39e
     
 //     printf("Final\n");
 //     for (std::set<string>::iterator it = final_ids.begin(); it != final_ids.end(); ++it) {
@@ -1472,8 +1500,8 @@ bool GTFReader::InterchromosomalPair(string chr0, unsigned start0, unsigned end0
 
   bool found = false;
   /*
-  string gene1 = "GAPDH";
-  string gene2 = "GAPDHP1";
+  string gene1 = "TTTY14";
+  string gene2 = "NoGene";
  
   std::vector<GTFGene> results0, results1;
    IntervalGenes(chr0, start0, end0, results0);

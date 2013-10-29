@@ -185,7 +185,7 @@ class GTFFeature {
         
     protected:
     
-        void IncrementReadCount() { read_count++; };
+        void IncrementReadCount() { printf("Increment read count: Feature not implemented\n"); };
     
         string chr;
         string source;
@@ -225,7 +225,9 @@ class GTFTranscript {
         unsigned GenomicPosition(unsigned transcript_pos, unsigned span) const;
         void Junctions(unsigned start, unsigned span, std::vector<junction> &junctions) const;
         void WriteFASTA(const Genome *genome, std::ofstream &outfile) const;
-        
+        unsigned SplicedLength() const;        
+        unsigned NormalizedCount() const;
+
         void WriteReadCountID(ofstream &outfile) const;
         void WriteReadCountName(ofstream &outfile) const;
         
@@ -233,7 +235,7 @@ class GTFTranscript {
     
         void UpdateBoundaries(unsigned start, unsigned end);
         void Process();
-        void IncrementReadCount();
+        void IncrementReadCount(unsigned numPotentialTranscripts);
     
         unsigned start;
         unsigned end;
@@ -245,7 +247,7 @@ class GTFTranscript {
         
         feature_list features;
         feature_list exons;
-        unsigned read_count;
+        float read_count;
         ExclusiveLock mutex;
 
 };
