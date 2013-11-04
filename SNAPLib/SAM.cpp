@@ -1057,7 +1057,7 @@ SAMFormat::writeRead(
             const Genome::Piece *transcriptomePiece = transcriptome->getPieceAtLocation(tlocation);
             const char* transcriptomePieceName = transcriptomePiece->name;
             unsigned transcriptomePositionInPiece = tlocation - transcriptomePiece->beginningOffset + 1; // SAM is 1-based
-                                       
+                                                                             
             //Insert splice junction
             //cigar = convertTranscriptomeToGenome(gtf, tokens, transcriptomePieceName, transcriptomePositionInPiece, cigarBufWithClipping, cigarBufWithClippingSize);
             lv->insertSpliceJunctions(gtf, tokens, transcriptomePieceName, transcriptomePositionInPiece, (char*) cigarBuf, cigarBufSize);
@@ -1210,9 +1210,14 @@ SAMFormat::computeCigarString(
         char clipAfter[16] = {'\0'};
         if (basesClippedBefore > 0) {
             snprintf(clipBefore, sizeof(clipBefore), "%uS", basesClippedBefore);
+            tokens.insert(tokens.begin(), 'S');
+            tokens.insert(tokens.begin(), basesClippedBefore);
+
         }
         if (basesClippedAfter > 0) {
             snprintf(clipAfter, sizeof(clipAfter), "%uS", basesClippedAfter);
+            tokens.push_back(basesClippedAfter);
+            tokens.push_back('S');
         }
         snprintf(cigarBufWithClipping, cigarBufWithClippingLen, "%s%s%s", clipBefore, cigarBuf, clipAfter);
         return cigarBufWithClipping;

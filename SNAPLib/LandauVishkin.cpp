@@ -159,6 +159,12 @@ int LandauVishkinWithCigar::insertSpliceJunctions(
             }
             numCigarOps++;
         }
+        if (op == 'S') {
+            if (! writeCigar(&cigarNew, &cigarNewLen, length, op, format, final)) {
+                return -2;
+            }
+            numCigarOps++;
+        }
         
         else {
       
