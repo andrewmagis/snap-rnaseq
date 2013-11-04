@@ -839,10 +839,14 @@ BAMFormat::computeCigarOps(
         if (basesClippedBefore > 0) {
             *(_uint32*)cigarBuf = (basesClippedBefore << 4) | BAMAlignment::CigarToCode['S'];
             used += 4;
+            tokens.insert(tokens.begin(), 'S');
+            tokens.insert(tokens.begin(), basesClippedBefore);
         }
         if (basesClippedAfter > 0) {
             *(_uint32*)(cigarBuf + used) = (basesClippedAfter << 4) | BAMAlignment::CigarToCode['S'];
             used += 4;
+            tokens.push_back(basesClippedAfter);
+            tokens.push_back('S');
         }
         return used / 4;
     }
