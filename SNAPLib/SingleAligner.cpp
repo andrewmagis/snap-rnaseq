@@ -96,7 +96,7 @@ SingleAlignerContext::parseOptions(
 		options->inputs[i-3].fileType =
             stringEndsWith(argv[i],".sam") ? SAMFile :
             stringEndsWith(argv[i],".bam") ? BAMFile :
-            stringEndsWith(argv[i], ".fastq.gz") || stringEndsWith(argv[i], ".fq.gz") ? GZipFASTQFile :
+            stringEndsWith(argv[i], ".gzip") || stringEndsWith(argv[i], ".gz") ? GZipFASTQFile :
             FASTQFile;
 	}
 
