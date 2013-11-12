@@ -127,7 +127,7 @@ void AlignerContext::runAlignment(int argc, const char **argv, const char *versi
     gtf->WriteReadCounts();
 
     if (c_filter != NULL) {
-      c_filter->Print();
+      //c_filter->Print();
       c_filter->Write();
     }
 }
