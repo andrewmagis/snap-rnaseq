@@ -202,6 +202,32 @@ SingleAlignerContext::runIterationThread()
     t_aligner->setExplorePopularSeeds(options->explorePopularSeeds);
     t_aligner->setStopOnFirstHit(options->stopOnFirstHit);
 
+    BigAllocator *c_allocator = NULL;
+    BaseAligner *c_aligner = NULL;
+
+    if (contamination != NULL) {
+ 
+        BigAllocator *c_allocator = new BigAllocator(BaseAligner::getBigAllocatorReservation(true, maxHits, maxReadSize, contamination->getSeedLength(), numSeedsFromCommandLine, seedCoverage));
+        BaseAligner *c_aligner = new (c_allocator) BaseAligner(
+                contamination,            
+                maxHits,
+                maxDist,
+                maxReadSize,
+                numSeedsFromCommandLine,
+                seedCoverage,
+                extraSearchDepth,
+                NULL,               // LV (no need to cache in the single aligner)
+                NULL,               // reverse LV
+                stats,
+                c_allocator);
+
+        c_allocator->assertAllMemoryUsed();
+        c_allocator->checkCanaries();
+        c_aligner->setExplorePopularSeeds(options->explorePopularSeeds);
+        c_aligner->setStopOnFirstHit(options->stopOnFirstHit);
+
+    }
+
 #ifdef  _MSC_VER
     if (options->useTimingBarrier) {
         if (0 == InterlockedDecrementAndReturnNewValue(nThreadsAllocatingMemory)) {
@@ -252,6 +278,21 @@ SingleAlignerContext::runIterationThread()
         //Filter the results
         AlignmentResult result = filter.FilterSingle(&location, &direction, &score, &mapq, &isTranscriptome, &tlocation);
 
+        //If the read is still unaligned
+        if (result == NotFound) {
+
+          //If the contamination database is present
+          if (c_aligner != NULL) {
+
+            AlignmentResult c_result = c_aligner->AlignRead(read, &location, &direction, &score, &mapq);
+            g_allocator->checkCanaries();
+
+            if (c_result != NotFound) {
+              c_filter->AddAlignment(location, direction, score, mapq, false, false);
+            }
+          }
+        }
+
         bool wasError = false;
         if (result != NotFound && computeError) {
             wasError = wgsimReadMisaligned(read, location, index, options->misalignThreshold);
@@ -262,6 +303,11 @@ SingleAlignerContext::runIterationThread()
         updateStats(stats, read, result, location, score, mapq, wasError);
     }
     
+    if (c_aligner != NULL) {
+        c_aligner->~BaseAligner();
+        delete c_allocator;
+    }
+
     g_aligner->~BaseAligner(); // This calls the destructor without calling operator delete, allocator owns the memory.
     t_aligner->~BaseAligner(); 
  
