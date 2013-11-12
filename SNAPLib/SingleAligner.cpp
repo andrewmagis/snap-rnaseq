@@ -207,8 +207,8 @@ SingleAlignerContext::runIterationThread()
 
     if (contamination != NULL) {
  
-        BigAllocator *c_allocator = new BigAllocator(BaseAligner::getBigAllocatorReservation(true, maxHits, maxReadSize, contamination->getSeedLength(), numSeedsFromCommandLine, seedCoverage));
-        BaseAligner *c_aligner = new (c_allocator) BaseAligner(
+        c_allocator = new BigAllocator(BaseAligner::getBigAllocatorReservation(true, maxHits, maxReadSize, contamination->getSeedLength(), numSeedsFromCommandLine, seedCoverage));
+        c_aligner = new (c_allocator) BaseAligner(
                 contamination,            
                 maxHits,
                 maxDist,
@@ -220,7 +220,7 @@ SingleAlignerContext::runIterationThread()
                 NULL,               // reverse LV
                 stats,
                 c_allocator);
-
+        
         c_allocator->assertAllMemoryUsed();
         c_allocator->checkCanaries();
         c_aligner->setExplorePopularSeeds(options->explorePopularSeeds);
@@ -285,7 +285,7 @@ SingleAlignerContext::runIterationThread()
           if (c_aligner != NULL) {
 
             AlignmentResult c_result = c_aligner->AlignRead(read, &location, &direction, &score, &mapq);
-            g_allocator->checkCanaries();
+            c_allocator->checkCanaries();
 
             if (c_result != NotFound) {
               c_filter->AddAlignment(location, direction, score, mapq, false, false);
