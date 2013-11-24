@@ -650,10 +650,13 @@ GTFFeature::GTFFeature(string line)
     char* line_c = (char*)line.c_str(); 
     char *pch;
     pch = strtok(line_c,"'\t'"); chr = pch;
+    key = string(pch);
     pch = strtok(NULL,"'\t'"); source = pch;
     pch = strtok(NULL,"'\t'"); feature = pch;
     pch = strtok(NULL,"'\t'"); start = atoi(pch);
+    key += string(pch);
     pch = strtok(NULL,"'\t'"); end = atoi(pch);
+    key += string(pch);
     pch = strtok(NULL,"'\t'"); score = pch;
     pch = strtok(NULL,"'\t'"); strand = *pch;
     pch = strtok(NULL,"'\t'"); frame = *pch;
@@ -674,6 +677,11 @@ GTFFeature::GTFFeature(string line)
             attributes.insert(std::map<string,string>::value_type(key, value));
         
         }
+    }
+
+    //Set the type
+    if (feature.compare("exon") == 0) {
+        type = EXON;
     }
     
     string value;
@@ -743,7 +751,8 @@ void GTFFeature::Print() const {
 
 GTFFeature::GTFFeature(const GTFFeature& rhs) 
     :   chr(rhs.chr), source(rhs.source), feature(rhs.feature), start(rhs.start), end(rhs.end), score(rhs.score),
-        strand(rhs.strand), frame(rhs.frame), gene_id(rhs.gene_id), transcript_id(rhs.transcript_id), read_count(rhs.read_count)
+        strand(rhs.strand), frame(rhs.frame), type(rhs.type), gene_id(rhs.gene_id), transcript_id(rhs.transcript_id), 
+        gene_name(rhs.gene_name), transcript_name(rhs.transcript_name), read_count(rhs.read_count)
 {}
   
 GTFFeature::~GTFFeature() {}
@@ -751,6 +760,7 @@ GTFFeature::~GTFFeature() {}
 GTFFeature& GTFFeature::operator=(const GTFFeature& rhs) {
 
     if (this != &rhs) {
+        key = rhs.key;
         chr = rhs.chr;
         source = rhs.source;
         feature = rhs.feature;
@@ -759,8 +769,13 @@ GTFFeature& GTFFeature::operator=(const GTFFeature& rhs) {
         score = rhs.score;
         strand = rhs.strand;
         frame = rhs.frame;
+        type = rhs.type;
+
         gene_id = rhs.gene_id;
         transcript_id = rhs.transcript_id;
+        gene_name = rhs.gene_name;
+        transcript_name = rhs.transcript_name;
+        attributes = rhs.attributes;
         read_count = rhs.read_count;
     }
     return *this;
@@ -809,6 +824,24 @@ bool GTFGene::operator<(const GTFGene &rhs) const {
 void GTFGene::UpdateBoundaries(unsigned new_start, unsigned new_end) {
     start = std::min(new_start, start);
     end = std::max(new_end, end);
+}
+
+void GTFGene::Process(feature_map &all_features, transcript_map &all_transcripts) {
+
+    //Copy all exons into separate vector
+    for (id_set::iterator it = transcript_ids.begin(); it != transcript_ids.end(); ++it) {
+        
+        //Process each transcript
+        transcript_map::iterator transcript = all_transcripts.find(*it);
+        if (transcript == all_transcripts.end()) {
+            printf("Transcript %s not found in complete set", it->c_str());
+            exit(1);
+        }
+
+        //Pass in all features and my features
+        transcript->second.Process(all_features, features);
+
+    }
 }   
 
 bool GTFGene::CheckBoundary(string query_chr, unsigned query_pos, unsigned buffer) const {
@@ -883,7 +916,62 @@ GTFTranscript& GTFTranscript::operator=(const GTFTranscript& rhs) {
     return *this;
 }
 
-void GTFTranscript::Process() {
+void GTFTranscript::Process(feature_map &all_features, feature_list &gene_features) {
+
+    //Copy all exons into separate vector
+    sort(features.begin(), features.end(), FeatureListSort);
+
+    feature_list::iterator prev = features.end();
+    for (feature_list::iterator current = features.begin(); current != features.end(); ++current) {
+        
+        //If current is an exon, add it in
+        if ((*current)->type == EXON) {
+
+            //If prev is set, also add an intron
+            if (prev != features.end()) {
+
+                //Create the new intron with the appropriate boundaries
+                GTFFeature intron(**current);
+                intron.feature = "intron";
+                intron.start = (*prev)->end+1;
+                intron.end = (*current)->start-1;
+                intron.key = intron.chr + ToString(intron.start) + ToString(intron.end); 
+                intron.type = INTRON;
+
+                //Try to add the intron
+                feature_map::iterator fpos = all_features.insert(all_features.begin(), feature_map::value_type(intron.key, intron));
+
+                //Insert this transcript_id into this intron
+                fpos->second.transcript_ids.insert(intron.transcript_id);
+
+                //Add pointer of this to the list of gene_features
+                gene_features.push_back(&fpos->second);
+
+                //Add point of this to the list of exons in this transcript
+                exons.push_back(&fpos->second);               
+             }
+            
+           //Finally, add the current exon to the list of exons
+           exons.push_back(*current);
+
+           //If this is an exon, then set prev to be current
+           prev = current;
+        }
+    }
+
+    /*
+    printf("Transcript: %s\n", transcript_id.c_str());
+    for (feature_list::iterator it = exons.begin(); it != exons.end(); ++it) {
+        (*it)->Print();
+    }
+    */
+
+    //Sort the exons by start and end
+    //sort(exons.begin(), exons.end(), FeatureListSort);
+}
+
+/*
+void GTFTranscript::Process(feature_map &all_features, feature_list &gene_features) {
 
     //Copy all exons into separate vector
     for (feature_list::iterator it = features.begin(); it != features.end(); ++it) {
@@ -897,6 +985,7 @@ void GTFTranscript::Process() {
     sort(exons.begin(), exons.end(), FeatureListSort);
 
 }
+*/
 
 void GTFTranscript::UpdateBoundaries(unsigned new_start, unsigned new_end) {
     start = std::min(new_start, start);
@@ -929,11 +1018,16 @@ void GTFTranscript::IncrementReadCount(unsigned numPotentialTranscripts = 1) {
 }
 
 unsigned GTFTranscript::GenomicPosition(unsigned transcript_pos, unsigned span) const {
-              
+        
     //This assumes 1-offset transcript pos, and returns 1-offset genomic position
     //Converts transcript coordinates into genomic coordinates
     for (feature_list::const_iterator it = exons.begin(); it != exons.end(); ++it) {
-                
+ 
+        //If this is an exon
+        if ((*it)->type != EXON) {
+            continue; 
+        }
+               
         //If transcript_pos is less than or equal to this
         if (transcript_pos > (*it)->Length()) {
             transcript_pos -= (*it)->Length();
@@ -957,6 +1051,38 @@ unsigned GTFTranscript::GenomicPosition(unsigned transcript_pos, unsigned span) 
     return 0;
 }
 
+void GTFTranscript::Junctions(unsigned transcript_pos, unsigned span, std::vector<junction> &junctions) const {
+    
+    //Go through each feature of this transcript until we find the start
+    unsigned current_pos = 0;
+    unsigned end_pos = transcript_pos + span;
+    for (feature_list::const_iterator current = exons.begin(); current != exons.end(); ++current) {
+
+        //Get the end of this exon
+        if ((*current)->type == EXON) {
+            current_pos += (*current)->Length();
+        }
+
+        //If we have found the beginning of the transcript
+        if (transcript_pos <= current_pos) {
+
+            //If we have crossed an intron, add it to the list of junctions
+            if ((*current)->type == INTRON) {
+                junctions.push_back(junction(current_pos+1, (*current)->Length()));
+
+            } else if ((*current)->type == EXON) {
+
+                //If transcript_pos is less than or equal to current, the start
+                //lies within this feature
+                if (current_pos >= end_pos) {
+                    return;
+                }
+            }
+        } 
+    }
+}
+
+/*
 void GTFTranscript::Junctions(unsigned transcript_pos, unsigned span, std::vector<junction> &junctions) const {
     
     //printf("Transcript: %s %u %u\n", transcript_id.c_str(), transcript_pos, span);
@@ -995,6 +1121,7 @@ void GTFTranscript::Junctions(unsigned transcript_pos, unsigned span, std::vecto
     }
 
 }
+*/
 
 void GTFTranscript::WriteFASTA(const Genome *genome, std::ofstream &outfile) const {
 
@@ -1058,11 +1185,7 @@ GTFReader::GTFReader(const char* output) {
 }
 
 //Destructor
-GTFReader::~GTFReader() {
-    for (feature_map::iterator it = features.begin(); it != features.end(); ++it) {
-        delete (*it);
-    }
-}
+GTFReader::~GTFReader() {}
 
 int GTFReader::Load(string _filename) {
 
@@ -1093,14 +1216,14 @@ int GTFReader::Load(string _filename) {
     }
     infile.close();
 
-    //Sort each transcript
-    for (transcript_map::iterator it = transcripts.begin(); it != transcripts.end(); ++it) {
-        it->second.Process();
+    //Sort each gene, which in turn proceses each transcript
+    for (gene_map::iterator it = genes.begin(); it != genes.end(); ++it) {
+        it->second.Process(features, transcripts);
     }
     
     //Add all features to interval tree
     for (feature_map::iterator it = features.begin(); it != features.end(); ++it) {
-        feature_intervals.push_back(Interval<GTFFeature*>((*it)->start, (*it)->end, *it));
+        feature_intervals.push_back(Interval<GTFFeature*>(it->second.start, it->second.end, &it->second));
     }
     feature_tree = IntervalTree<GTFFeature*>(feature_intervals);
 
@@ -1129,49 +1252,54 @@ int GTFReader::Parse(string line) {
     }
 
     // Create a new GTFFeature from this line on the heap, because we want it to be constant
-    GTFFeature *feature = new GTFFeature(line);
+    GTFFeature feature(line);
     
-    if (feature->feature.compare("exon") != 0) {
+    if (feature.feature.compare("exon") != 0) {
         return 1;
     }
     
     string value;
-    if (!feature->GetAttribute("gene_id", value) && !feature->GetAttribute("Parent", value)) {
+    if (!feature.GetAttribute("gene_id", value) && !feature.GetAttribute("Parent", value)) {
         printf("Warning: annotation file missing 'gene_id' (GTF) or 'Parent' (GFF3) for exon entry\n");
     }
-        
-    //We don't try to find features, we just add them to the vector and to the tree
-    features.push_back(feature);
     
+    //Try to find this feature in the feature map
+    //feature_map::iterator fpos = features.insert(feature.key);
+    feature_map::iterator fpos = features.insert(features.begin(), feature_map::value_type(feature.key, feature));
+    
+    //Insert this transcript_id into this feature
+    fpos->second.transcript_ids.insert(feature.transcript_id);
+
     //Try to find this transcript in the transcript_map
-    transcript_map::iterator pos = transcripts.find(feature->transcript_id);
+    transcript_map::iterator pos = transcripts.find(feature.transcript_id);
         
     //If this sequence is not found, create a new vector to store this sequence (and others like it)
     if ((pos == transcripts.end())) {
-        GTFTranscript transcript(feature->chr, feature->gene_id, feature->transcript_id, feature->GeneName(), feature->TranscriptName(), feature->start, feature->end);
-        transcript.features.push_back(feature);
-        transcripts.insert(transcript_map::value_type(feature->transcript_id, transcript));
+        GTFTranscript transcript(feature.chr, feature.gene_id, feature.transcript_id, feature.GeneName(), feature.TranscriptName(), feature.start, feature.end);
+        transcript.features.push_back(&fpos->second);
+        transcripts.insert(transcript_map::value_type(feature.transcript_id, transcript));
         
     //Otherwise, add this feature to the transcript
     } else {
-        pos->second.features.push_back(feature);
-        pos->second.UpdateBoundaries(feature->start, feature->end);
+        pos->second.features.push_back(&fpos->second);
+        pos->second.UpdateBoundaries(feature.start, feature.end);
     }
     
     //Try to find this gene in the gene_map
-    gene_map::iterator gpos = genes.find(feature->gene_id);
+    gene_map::iterator gpos = genes.find(feature.gene_id);
     
     //If this sequence is not found, create a new vector to store this sequence (and others like it)
     if ((gpos == genes.end())) {
-        GTFGene gene(feature->chr, feature->gene_id, feature->start, feature->end, feature->GeneName());
-        gene.features.push_back(feature);
-        genes.insert(gene_map::value_type(feature->gene_id, gene));
+        GTFGene gene(feature.chr, feature.gene_id, feature.start, feature.end, feature.GeneName());
+        gene.features.push_back(&fpos->second);
+        gene.transcript_ids.insert(feature.transcript_id);
+        genes.insert(gene_map::value_type(feature.gene_id, gene));
         
-    //Otherwise, add this feature to the transcript
+    //Otherwise, add this feature to the gene
     } else {
-        //Do nothing
-        gpos->second.features.push_back(feature);
-        gpos->second.UpdateBoundaries(feature->start, feature->end);
+        gpos->second.features.push_back(&fpos->second);
+        gpos->second.transcript_ids.insert(feature.transcript_id);
+        gpos->second.UpdateBoundaries(feature.start, feature.end);
     }    
        
     return 0;

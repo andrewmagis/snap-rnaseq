@@ -45,6 +45,9 @@ const int ALIGNED_DIFF_CHR          = 5;
 const int UNANNOTATED               = 6;
 const int CIRCULAR                  = 7;
 
+//Definitions for features types
+enum {UNASSIGNED, EXON, INTRON};
+
 class GTFReader;
 
 //Namespaces
@@ -162,6 +165,8 @@ class ReadIntervalMap {
 
 };
 
+typedef std::set<string> id_set;
+
 class GTFFeature {
 
     friend class GTFReader;
@@ -187,6 +192,7 @@ class GTFFeature {
     
         void IncrementReadCount() { printf("Increment read count: Feature not implemented\n"); };
     
+        string key;
         string chr;
         string source;
         string feature;
@@ -195,6 +201,9 @@ class GTFFeature {
         string score;
         char strand;
         char frame;
+        id_set transcript_ids;
+        unsigned type;
+
         string gene_id;
         string transcript_id;
         string gene_name;
@@ -204,13 +213,15 @@ class GTFFeature {
 
 };
 
+typedef std::map<std::string, GTFFeature> feature_map;
 typedef std::vector<GTFFeature*> feature_list;
 typedef std::pair<unsigned, unsigned> junction;
 
 class GTFTranscript {
 
     friend class GTFReader;
-    
+    friend class GTFGene;    
+
     public:
         
         GTFTranscript(string chr, string gene_id, string transcript_id, string gene_name, string transcript_name, unsigned start, unsigned end);
@@ -234,7 +245,7 @@ class GTFTranscript {
     protected:
     
         void UpdateBoundaries(unsigned start, unsigned end);
-        void Process();
+        void Process(feature_map &all_features, feature_list &gene_features);
         void IncrementReadCount(unsigned numPotentialTranscripts);
     
         unsigned start;
@@ -251,6 +262,8 @@ class GTFTranscript {
         ExclusiveLock mutex;
 
 };
+
+typedef std::map<std::string, GTFTranscript> transcript_map;
 
 class GTFGene {
 
@@ -275,23 +288,24 @@ class GTFGene {
         void WriteReadCountName(ofstream &outfile) const;
         
     protected:
-    
+  
+        void Process(feature_map &all_features, transcript_map &all_transcripts);  
         void UpdateBoundaries(unsigned start, unsigned end);
         void IncrementReadCount();
-    
+      
+
         string chr;
         string gene_id;
         string gene_name;
         unsigned start;
         unsigned end;
         feature_list features;
+        id_set transcript_ids;
         unsigned read_count;
         ExclusiveLock mutex;
                           
 };        
 
-typedef std::vector<GTFFeature*> feature_map;
-typedef std::map<std::string, GTFTranscript> transcript_map;
 typedef std::map<std::string, GTFGene> gene_map;
 
 class GTFReader {
