@@ -180,8 +180,11 @@ class GTFFeature {
         GTFFeature& operator=(const GTFFeature &rhs);
         bool operator<(const GTFFeature &rhs) const;
         
+	string Chr() const { return chr; };
         unsigned Start() const { return start; };
+        unsigned End() const { return end; };
         unsigned ReadCount() const { return read_count; };
+        unsigned Type() const { return type; };
         string TranscriptName() const;
         string GeneName() const;
         unsigned Length() const;
@@ -190,7 +193,7 @@ class GTFFeature {
         
     protected:
     
-        void IncrementReadCount() { printf("Increment read count: Feature not implemented\n"); };
+        void IncrementReadCount();
     
         string key;
         string chr;
@@ -210,12 +213,14 @@ class GTFFeature {
         string transcript_name;
         std::map<std::string, std::string> attributes;
         unsigned read_count;
+        ExclusiveLock mutex;
 
 };
 
 typedef std::map<std::string, GTFFeature> feature_map;
+typedef std::map<std::string, GTFFeature*> feature_pointer_map;
 typedef std::vector<GTFFeature*> feature_list;
-typedef std::pair<unsigned, unsigned> junction;
+typedef std::pair<unsigned, GTFFeature*> junction;
 
 class GTFTranscript {
 
@@ -239,13 +244,14 @@ class GTFTranscript {
         unsigned SplicedLength() const;        
         unsigned NormalizedCount() const;
 
+        void Print() const;
         void WriteReadCountID(ofstream &outfile) const;
         void WriteReadCountName(ofstream &outfile) const;
         
     protected:
     
         void UpdateBoundaries(unsigned start, unsigned end);
-        void Process(feature_map &all_features, feature_list &gene_features);
+        void Process(feature_map &all_features, feature_pointer_map &gene_features);
         void IncrementReadCount(unsigned numPotentialTranscripts);
     
         unsigned start;
@@ -286,7 +292,8 @@ class GTFGene {
         
         void WriteReadCountID(ofstream &outfile) const;
         void WriteReadCountName(ofstream &outfile) const;
-        
+        void WriteJunctionCountID(ofstream &outfile) const;     
+   
     protected:
   
         void Process(feature_map &all_features, transcript_map &all_transcripts);  
@@ -299,7 +306,7 @@ class GTFGene {
         string gene_name;
         unsigned start;
         unsigned end;
-        feature_list features;
+        feature_pointer_map features;
         id_set transcript_ids;
         unsigned read_count;
         ExclusiveLock mutex;

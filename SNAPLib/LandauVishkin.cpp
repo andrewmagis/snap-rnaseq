@@ -208,7 +208,7 @@ int LandauVishkinWithCigar::insertSpliceJunctions(
                     }   
                                                 
                     // Add in splice junction spacer only if this is not the first operator
-                    if (! writeCigar(&cigarNew, &cigarNewLen, jit->second, 'N', format, final)) {
+                    if (! writeCigar(&cigarNew, &cigarNewLen, jit->second->Length(), 'N', format, final)) {
                         return -2;
                     }
                     numCigarOps++;

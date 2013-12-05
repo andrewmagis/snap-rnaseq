@@ -647,6 +647,8 @@ GTFFeature::GTFFeature(string line)
     : read_count(0) 
 {
 
+    InitializeExclusiveLock(&mutex);
+
     char* line_c = (char*)line.c_str(); 
     char *pch;
     pch = strtok(line_c,"'\t'"); chr = pch;
@@ -746,16 +748,25 @@ unsigned GTFFeature::Length() const {
 }
 
 void GTFFeature::Print() const {
-    printf("%s\t%s\t%s\t%u\t%u\t%s\t%c\t%c\t%s\t%s\n", chr.c_str(), source.c_str(), feature.c_str(), start, end, score.c_str(), strand, frame, gene_id.c_str(), transcript_id.c_str());
+    printf("%s\t%s\t%s\t%u\t%u\t%s\t%c\t%c\t%s", chr.c_str(), source.c_str(), feature.c_str(), start, end, score.c_str(), strand, frame, gene_id.c_str());
+    for (id_set::iterator it = transcript_ids.begin(); it != transcript_ids.end(); ++it) {
+        printf("\t%s",it->c_str());
+    }
+    printf("\t[%u]\n", read_count);
 }
 
 GTFFeature::GTFFeature(const GTFFeature& rhs) 
-    :   chr(rhs.chr), source(rhs.source), feature(rhs.feature), start(rhs.start), end(rhs.end), score(rhs.score),
+    :   key(rhs.key), chr(rhs.chr), source(rhs.source), feature(rhs.feature), start(rhs.start), end(rhs.end), score(rhs.score),
         strand(rhs.strand), frame(rhs.frame), type(rhs.type), gene_id(rhs.gene_id), transcript_id(rhs.transcript_id), 
-        gene_name(rhs.gene_name), transcript_name(rhs.transcript_name), read_count(rhs.read_count)
-{}
+        gene_name(rhs.gene_name), transcript_name(rhs.transcript_name), transcript_ids(rhs.transcript_ids), 
+        attributes(rhs.attributes), read_count(rhs.read_count)
+{
+    InitializeExclusiveLock(&mutex);
+}
   
-GTFFeature::~GTFFeature() {}
+GTFFeature::~GTFFeature() {
+    DestroyExclusiveLock(&mutex);
+}
 
 GTFFeature& GTFFeature::operator=(const GTFFeature& rhs) {
 
@@ -770,19 +781,32 @@ GTFFeature& GTFFeature::operator=(const GTFFeature& rhs) {
         strand = rhs.strand;
         frame = rhs.frame;
         type = rhs.type;
-
         gene_id = rhs.gene_id;
         transcript_id = rhs.transcript_id;
         gene_name = rhs.gene_name;
         transcript_name = rhs.transcript_name;
+        transcript_ids = rhs.transcript_ids;
         attributes = rhs.attributes;
         read_count = rhs.read_count;
+        InitializeExclusiveLock(&mutex);
     }
     return *this;
 }
 
 bool GTFFeature::operator<(const GTFFeature& rhs) const {
     return start < rhs.start;
+}
+
+void GTFFeature::IncrementReadCount() {
+ 
+     //Lock the mutex, because multiple threads might try to do this simultaneously
+     AcquireExclusiveLock(&mutex);
+
+     read_count++;
+ 
+     //Unlock it
+     ReleaseExclusiveLock(&mutex);
+ 
 }
 
 GTFGene::GTFGene(string _chr, string _gene_id, unsigned _start, unsigned _end, string gene_name_) 
@@ -842,6 +866,21 @@ void GTFGene::Process(feature_map &all_features, transcript_map &all_transcripts
         transcript->second.Process(all_features, features);
 
     }
+
+    /*
+    //Print the transcripts
+    for (id_set::iterator it = transcript_ids.begin(); it != transcript_ids.end(); ++it) {
+        //Process each transcript
+        transcript_map::iterator transcript = all_transcripts.find(*it);
+        if (transcript == all_transcripts.end()) {
+            printf("Transcript %s not found in complete set", it->c_str());
+            exit(1);
+        }
+
+        //Pass in all features and my features
+        transcript->second.Print();
+    }
+    */
 }   
 
 bool GTFGene::CheckBoundary(string query_chr, unsigned query_pos, unsigned buffer) const {
@@ -868,6 +907,15 @@ void GTFGene::IncrementReadCount() {
     //Unlock it
     ReleaseExclusiveLock(&mutex);
 
+}
+
+void GTFGene::WriteJunctionCountID(ofstream &outfile) const {
+
+    for (feature_pointer_map::const_iterator it = features.begin(); it != features.end(); ++it) {
+        if (it->second->Type() == INTRON) {
+            outfile << gene_id+":"+it->second->Chr()+':'+ToString(it->second->Start())+"-"+ToString(it->second->End()) << '\t' << round((float)it->second->ReadCount() / ((float)read_count / 1000.0)) << endl;
+        }
+    }
 }
 
 void GTFGene::WriteReadCountID(ofstream &outfile) const {
@@ -916,7 +964,7 @@ GTFTranscript& GTFTranscript::operator=(const GTFTranscript& rhs) {
     return *this;
 }
 
-void GTFTranscript::Process(feature_map &all_features, feature_list &gene_features) {
+void GTFTranscript::Process(feature_map &all_features, feature_pointer_map &gene_features) {
 
     //Copy all exons into separate vector
     sort(features.begin(), features.end(), FeatureListSort);
@@ -939,14 +987,16 @@ void GTFTranscript::Process(feature_map &all_features, feature_list &gene_featur
                 intron.type = INTRON;
 
                 //Try to add the intron
-                feature_map::iterator fpos = all_features.insert(all_features.begin(), feature_map::value_type(intron.key, intron));
-
+                feature_map::iterator fpos = all_features.insert(all_features.begin(), feature_map::value_type(intron.key, intron));       
+ 
                 //Insert this transcript_id into this intron
                 fpos->second.transcript_ids.insert(intron.transcript_id);
 
-                //Add pointer of this to the list of gene_features
-                gene_features.push_back(&fpos->second);
+                feature_pointer_map::iterator gpos = gene_features.insert(gene_features.begin(), feature_pointer_map::value_type(intron.key, &fpos->second));
 
+                //Insert this transcript_id into this intron
+                gpos->second->transcript_ids.insert(intron.transcript_id);
+               
                 //Add point of this to the list of exons in this transcript
                 exons.push_back(&fpos->second);               
              }
@@ -958,13 +1008,6 @@ void GTFTranscript::Process(feature_map &all_features, feature_list &gene_featur
            prev = current;
         }
     }
-
-    /*
-    printf("Transcript: %s\n", transcript_id.c_str());
-    for (feature_list::iterator it = exons.begin(); it != exons.end(); ++it) {
-        (*it)->Print();
-    }
-    */
 
     //Sort the exons by start and end
     //sort(exons.begin(), exons.end(), FeatureListSort);
@@ -990,6 +1033,13 @@ void GTFTranscript::Process(feature_map &all_features, feature_list &gene_featur
 void GTFTranscript::UpdateBoundaries(unsigned new_start, unsigned new_end) {
     start = std::min(new_start, start);
     end = std::max(new_end, end);
+}
+
+void GTFTranscript::Print() const {
+    printf("Transcript: %s\n", transcript_id.c_str());
+    for (feature_list::const_iterator it = exons.begin(); it != exons.end(); ++it) {
+        (*it)->Print();
+    }
 }   
 
 unsigned GTFTranscript::SplicedLength() const {
@@ -1068,7 +1118,7 @@ void GTFTranscript::Junctions(unsigned transcript_pos, unsigned span, std::vecto
 
             //If we have crossed an intron, add it to the list of junctions
             if ((*current)->type == INTRON) {
-                junctions.push_back(junction(current_pos+1, (*current)->Length()));
+                junctions.push_back(junction(current_pos+1, *current));
 
             } else if ((*current)->type == EXON) {
 
@@ -1291,13 +1341,13 @@ int GTFReader::Parse(string line) {
     //If this sequence is not found, create a new vector to store this sequence (and others like it)
     if ((gpos == genes.end())) {
         GTFGene gene(feature.chr, feature.gene_id, feature.start, feature.end, feature.GeneName());
-        gene.features.push_back(&fpos->second);
+        //gene.features.push_back(&fpos->second);
         gene.transcript_ids.insert(feature.transcript_id);
         genes.insert(gene_map::value_type(feature.gene_id, gene));
         
     //Otherwise, add this feature to the gene
     } else {
-        gpos->second.features.push_back(&fpos->second);
+        //gpos->second.features.push_back(&fpos->second);
         gpos->second.transcript_ids.insert(feature.transcript_id);
         gpos->second.UpdateBoundaries(feature.start, feature.end);
     }    
@@ -1369,7 +1419,10 @@ void GTFReader::IncrementReadCount(string transcript_id0, unsigned transcript_st
         transcript0.Junctions(transcript_start0, length0, junctions);
         
         for (std::vector<junction>::iterator it = junctions.begin(); it != junctions.end(); ++it) {
-        
+ 
+            //Increment the splice count for this junction
+            it->second->IncrementReadCount();
+       
             unsigned length = it->first - transcript_start0;
             
             //printf("Querying with [%u %u]\n", start0, start0+length-1);
@@ -1398,7 +1451,7 @@ void GTFReader::IncrementReadCount(string transcript_id0, unsigned transcript_st
             }
                         
             transcript_start0 += length;
-            start0 += length + it->second;
+            start0 += length + it->second->Length();
             length0 -= length; 
              
         } 
@@ -1443,6 +1496,9 @@ void GTFReader::IncrementReadCount(string transcript_id0, unsigned transcript_st
         
         for (std::vector<junction>::iterator it = junctions.begin(); it != junctions.end(); ++it) {
 
+            //Increment the splice count for this junction           
+            it->second->IncrementReadCount();
+
             unsigned length = it->first - transcript_start1;
             
             //printf("Querying with [%u %u]\n", start1, start1+length-1);
@@ -1470,7 +1526,7 @@ void GTFReader::IncrementReadCount(string transcript_id0, unsigned transcript_st
             }
             
             transcript_start1 += length;
-            start1 += length + it->second;
+            start1 += length + it->second->Length();
             length1 -= length; 
             
         } 
@@ -1548,6 +1604,7 @@ void GTFReader::IncrementReadCount(string transcript_id0, unsigned transcript_st
 //     }
     
 }
+
 
 void GTFReader::IntervalFeatures(std::string chr, unsigned start, unsigned stop, std::vector<GTFFeature*> &results) {
 
@@ -1649,13 +1706,17 @@ void GTFReader::WriteReadCounts() {
 
     ofstream transcript_name_counts, transcript_id_counts;
     ofstream gene_name_counts, gene_id_counts;
+    ofstream junction_name_counts, junction_id_counts;
 
+    //Open output files for id counts
     transcript_id_counts.open((prefix+".transcript_id.counts.txt").c_str());
     gene_id_counts.open((prefix+".gene_id.counts.txt").c_str());
-    
+    junction_id_counts.open((prefix+".junction_id.counts.txt").c_str());    
+
     transcript_name_counts.open((prefix+".transcript_name.counts.txt").c_str());
     gene_name_counts.open((prefix+".gene_name.counts.txt").c_str());
-
+    junction_name_counts.open((prefix+".junction_name.counts.txt").c_str());
+    
     //Go though each transcript and write
     for (transcript_map::iterator it = transcripts.begin(); it != transcripts.end(); ++it) {
         it->second.WriteReadCountID(transcript_id_counts);
@@ -1665,6 +1726,7 @@ void GTFReader::WriteReadCounts() {
     //Go though each transcript and write
     for (gene_map::iterator it = genes.begin(); it != genes.end(); ++it) {
         it->second.WriteReadCountID(gene_id_counts);
+        it->second.WriteJunctionCountID(junction_id_counts);
     }
     
     //Create a map to store the gene names
@@ -1697,8 +1759,10 @@ void GTFReader::WriteReadCounts() {
     
     transcript_id_counts.close();
     gene_id_counts.close();
+    junction_id_counts.close();
     transcript_name_counts.close();
     gene_name_counts.close();
+    junction_name_counts.close();
 
 }
 
