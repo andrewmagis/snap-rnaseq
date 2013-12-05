@@ -913,7 +913,8 @@ void GTFGene::WriteJunctionCountID(ofstream &outfile) const {
 
     for (feature_pointer_map::const_iterator it = features.begin(); it != features.end(); ++it) {
         if (it->second->Type() == INTRON) {
-            outfile << gene_id+":"+it->second->Chr()+':'+ToString(it->second->Start())+"-"+ToString(it->second->End()) << '\t' << round((float)it->second->ReadCount() / ((float)read_count / 1000.0)) << endl;
+            float gene_expression = ((float)read_count / 1000.0) + 1;
+            outfile << gene_id+":"+it->second->Chr()+':'+ToString(it->second->Start())+"-"+ToString(it->second->End()) << '\t' << round((float)it->second->ReadCount() / gene_expression) << endl;
         }
     }
 }
