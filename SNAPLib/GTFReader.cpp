@@ -706,6 +706,10 @@ GTFFeature::GTFFeature(string line)
     } else {
         transcript_id = gene_id;
     }
+
+    //Prepend gene_id onto the feature name to prevent overlapping genes from conflicting
+    key = gene_id + key;
+
 }
 
 bool GTFFeature::GetAttribute(string key, string &value) const {
